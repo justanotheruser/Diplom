@@ -1,0 +1,42 @@
+﻿Построение начато 11.05.2014 14:54:50.
+     1>Проект "C:\Users\User\Documents\Visual Studio 2012\Projects\Диплом\Fork_parallelLinesRefactoring\Fork_parallelLinesRefactoring\Fork_parallelLinesRefactoring.vcxproj" в узле 2 (целевые объекты Build).
+     1>ClCompile:
+         C:\Program Files\Microsoft Visual Studio 11.0\VC\bin\CL.exe /c /ZI /nologo /W3 /WX- /sdl /Od /Oy- /D _MBCS /Gm /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Fo"Debug\\" /Fd"Debug\vc110.pdb" /Gd /TP /analyze- /errorReport:prompt main.cpp
+         main.cpp
+     1>c:\users\user\documents\visual studio 2012\projects\диплом\fork_parallellinesrefactoring\fork_parallellinesrefactoring\main.cpp(304): warning C4018: <: несоответствие типов со знаком и без знака
+     1>c:\users\user\documents\visual studio 2012\projects\диплом\fork_parallellinesrefactoring\fork_parallellinesrefactoring\main.cpp(305): warning C4018: <: несоответствие типов со знаком и без знака
+     1>c:\users\user\documents\visual studio 2012\projects\диплом\fork_parallellinesrefactoring\fork_parallellinesrefactoring\main.cpp(310): warning C4018: <: несоответствие типов со знаком и без знака
+     1>c:\users\user\documents\visual studio 2012\projects\диплом\fork_parallellinesrefactoring\fork_parallellinesrefactoring\main.cpp(311): warning C4018: <: несоответствие типов со знаком и без знака
+     1>c:\users\user\documents\visual studio 2012\projects\диплом\fork_parallellinesrefactoring\fork_parallellinesrefactoring\main.cpp(317): warning C4018: <: несоответствие типов со знаком и без знака
+     1>c:\users\user\documents\visual studio 2012\projects\диплом\fork_parallellinesrefactoring\fork_parallellinesrefactoring\main.cpp(318): warning C4018: <: несоответствие типов со знаком и без знака
+     1>c:\users\user\documents\visual studio 2012\projects\диплом\fork_parallellinesrefactoring\fork_parallellinesrefactoring\main.cpp(323): warning C4018: <: несоответствие типов со знаком и без знака
+     1>c:\users\user\documents\visual studio 2012\projects\диплом\fork_parallellinesrefactoring\fork_parallellinesrefactoring\main.cpp(324): warning C4018: <: несоответствие типов со знаком и без знака
+     1>c:\users\user\documents\visual studio 2012\projects\диплом\fork_parallellinesrefactoring\fork_parallellinesrefactoring\main.cpp(330): warning C4018: <: несоответствие типов со знаком и без знака
+     1>c:\users\user\documents\visual studio 2012\projects\диплом\fork_parallellinesrefactoring\fork_parallellinesrefactoring\main.cpp(331): warning C4018: <: несоответствие типов со знаком и без знака
+     1>c:\users\user\documents\visual studio 2012\projects\диплом\fork_parallellinesrefactoring\fork_parallellinesrefactoring\main.cpp(337): warning C4018: <: несоответствие типов со знаком и без знака
+     1>c:\users\user\documents\visual studio 2012\projects\диплом\fork_parallellinesrefactoring\fork_parallellinesrefactoring\main.cpp(338): warning C4018: <: несоответствие типов со знаком и без знака
+     1>c:\users\user\documents\visual studio 2012\projects\диплом\fork_parallellinesrefactoring\fork_parallellinesrefactoring\main.cpp(343): warning C4018: <: несоответствие типов со знаком и без знака
+     1>c:\users\user\documents\visual studio 2012\projects\диплом\fork_parallellinesrefactoring\fork_parallellinesrefactoring\main.cpp(344): warning C4018: <: несоответствие типов со знаком и без знака
+     1>c:\users\user\documents\visual studio 2012\projects\диплом\fork_parallellinesrefactoring\fork_parallellinesrefactoring\main.cpp(349): warning C4018: <: несоответствие типов со знаком и без знака
+     1>c:\users\user\documents\visual studio 2012\projects\диплом\fork_parallellinesrefactoring\fork_parallellinesrefactoring\main.cpp(350): warning C4018: <: несоответствие типов со знаком и без знака
+     1>c:\users\user\documents\visual studio 2012\projects\диплом\fork_parallellinesrefactoring\fork_parallellinesrefactoring\main.cpp(368): warning C4018: <: несоответствие типов со знаком и без знака
+     1>c:\users\user\documents\visual studio 2012\projects\диплом\fork_parallellinesrefactoring\fork_parallellinesrefactoring\main.cpp(482): warning C4244: =: преобразование "double" в "int", возможна потеря данных
+     1>c:\users\user\documents\visual studio 2012\projects\диплом\fork_parallellinesrefactoring\fork_parallellinesrefactoring\main.cpp(483): warning C4244: =: преобразование "double" в "int", возможна потеря данных
+     1>c:\users\user\documents\visual studio 2012\projects\диплом\fork_parallellinesrefactoring\fork_parallellinesrefactoring\main.cpp(486): warning C4244: =: преобразование "double" в "int", возможна потеря данных
+     1>c:\users\user\documents\visual studio 2012\projects\диплом\fork_parallellinesrefactoring\fork_parallellinesrefactoring\main.cpp(487): warning C4244: =: преобразование "double" в "int", возможна потеря данных
+     1>c:\users\user\documents\visual studio 2012\projects\диплом\fork_parallellinesrefactoring\fork_parallellinesrefactoring\main.cpp(505): warning C4244: =: преобразование "double" в "int", возможна потеря данных
+     1>c:\users\user\documents\visual studio 2012\projects\диплом\fork_parallellinesrefactoring\fork_parallellinesrefactoring\main.cpp(506): warning C4244: =: преобразование "double" в "int", возможна потеря данных
+     1>c:\users\user\documents\visual studio 2012\projects\диплом\fork_parallellinesrefactoring\fork_parallellinesrefactoring\main.cpp(509): warning C4244: =: преобразование "double" в "int", возможна потеря данных
+     1>c:\users\user\documents\visual studio 2012\projects\диплом\fork_parallellinesrefactoring\fork_parallellinesrefactoring\main.cpp(510): warning C4244: =: преобразование "double" в "int", возможна потеря данных
+     1>c:\users\user\documents\visual studio 2012\projects\диплом\fork_parallellinesrefactoring\fork_parallellinesrefactoring\main.cpp(551): warning C4244: =: преобразование "double" в "int", возможна потеря данных
+     1>c:\users\user\documents\visual studio 2012\projects\диплом\fork_parallellinesrefactoring\fork_parallellinesrefactoring\main.cpp(552): warning C4244: =: преобразование "double" в "int", возможна потеря данных
+     1>c:\users\user\documents\visual studio 2012\projects\диплом\fork_parallellinesrefactoring\fork_parallellinesrefactoring\main.cpp(555): warning C4244: =: преобразование "double" в "int", возможна потеря данных
+     1>c:\users\user\documents\visual studio 2012\projects\диплом\fork_parallellinesrefactoring\fork_parallellinesrefactoring\main.cpp(556): warning C4244: =: преобразование "double" в "int", возможна потеря данных
+       Link:
+         C:\Program Files\Microsoft Visual Studio 11.0\VC\bin\link.exe /ERRORREPORT:PROMPT /OUT:"C:\Users\User\Documents\Visual Studio 2012\Projects\Диплом\Fork_parallelLinesRefactoring\Debug\Fork_parallelLinesRefactoring.exe" /INCREMENTAL /NOLOGO opencv_core248.lib opencv_imgproc248.lib opencv_highgui248.lib opencv_ml248.lib opencv_video248d.lib opencv_features2d248d.lib opencv_calib3d248d.lib opencv_objdetect248d.lib opencv_contrib248d.lib opencv_legacy248d.lib opencv_flann248d.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:\Users\User\Documents\Visual Studio 2012\Projects\Диплом\Fork_parallelLinesRefactoring\Debug\Fork_parallelLinesRefactoring.pdb" /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"C:\Users\User\Documents\Visual Studio 2012\Projects\Диплом\Fork_parallelLinesRefactoring\Debug\Fork_parallelLinesRefactoring.lib" /MACHINE:X86 Debug\main.obj
+         Fork_parallelLinesRefactoring.vcxproj -> C:\Users\User\Documents\Visual Studio 2012\Projects\Диплом\Fork_parallelLinesRefactoring\Debug\Fork_parallelLinesRefactoring.exe
+     1>Построение проекта "C:\Users\User\Documents\Visual Studio 2012\Projects\Диплом\Fork_parallelLinesRefactoring\Fork_parallelLinesRefactoring\Fork_parallelLinesRefactoring.vcxproj" завершено (целевые объекты Build).
+
+Построение успешно завершено.
+
+Затраченное время: 00:00:04.66
