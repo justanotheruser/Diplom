@@ -82,6 +82,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Ellipse.h" />
+    <ClInclude Include="EllipseDetectionLibrary.h" />
     <ClInclude Include="EllipseDetector.h" />
     <ClInclude Include="FornaciariPratiDetector.h" />
     <ClInclude Include="Stub.h" />
