@@ -49,12 +49,12 @@ int main(){
 	namedWindow("Arcs", CV_WINDOW_AUTOSIZE);
 	imshow("Arcs", arcs_picture);
 
-	choosePossibleTriplets();
+	/*choosePossibleTriplets();
 
 	Mat paralleltsTestPicture = parallelsTest();
 	namedWindow("Parallels test", CV_WINDOW_AUTOSIZE);
 	imshow("Parallels test", paralleltsTestPicture);
-	waitKey(0);
+	waitKey(0);*/
 	return 0;
 }
 void drawArc(Mat& canvas, const list<Point>& arc, uchar* color){
