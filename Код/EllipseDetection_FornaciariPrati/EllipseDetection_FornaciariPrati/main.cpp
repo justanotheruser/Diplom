@@ -41,20 +41,32 @@ Point findCenterIIIandIV(int arcIII, int arcI, bool &errorFlag);
 Point findCenterIVandI(int arcIV, int arcI, bool &errorFlag);
 
 int main(){
-	src = ourImread(string("C:\\Диплом\\\Images\\roadsign1.jpg"), CV_LOAD_IMAGE_GRAYSCALE);
-	namedWindow("Source image", CV_WINDOW_AUTOSIZE);
-	imshow("Source image", src);
+	src = ourImread(string("C:\\Диплом\\Images\\глаз.jpg"), CV_LOAD_IMAGE_GRAYSCALE);
+	EllipseDetector* detector = new FornaciariPratiDetector();
+	detector->DetailedEllipseDetection(src);
 
-	Mat arcs_picture = findArcs(src);
+
+
+
+
+	//namedWindow("Source image", CV_WINDOW_AUTOSIZE);
+	//imshow("Source image", src);
+
+	/*Ellipse elps1(cvPoint(100, 50), 45, cvSize(60, 39));
+	elps1.DrawOnImage(src, cvScalar(48), 2);
+	imshow("Source image", src);*/
+
+	/*Mat arcs_picture = findArcs(src);
 	namedWindow("Arcs", CV_WINDOW_AUTOSIZE);
-	imshow("Arcs", arcs_picture);
+	imshow("Arcs", arcs_picture);*/
 
-	choosePossibleTriplets();
+	/*choosePossibleTriplets();
 
 	Mat paralleltsTestPicture = parallelsTest();
 	namedWindow("Parallels test", CV_WINDOW_AUTOSIZE);
 	imshow("Parallels test", paralleltsTestPicture);
-	waitKey(0);
+	*/
+	
 	return 0;
 }
 void drawArc(Mat& canvas, const list<Point>& arc, uchar* color){
@@ -68,238 +80,6 @@ Mat findArcs(const Mat& src){
 	Mat blurred, sobelX, sobelY, canny;
 	int cannyLowTreshold = 50, blurKernelSize = 3, sobelKernelSize = 3;
 	double blurSigma = 1, cannyHighLowtRatio = 2.5;
-
-	GaussianBlur(src, blurred, Size(blurKernelSize, blurKernelSize), blurSigma, blurSigma); 
-	Sobel(blurred, sobelX, CV_16S, 1, 0, sobelKernelSize);
-	Sobel(blurred, sobelY, CV_16S, 0, 1, sobelKernelSize);
-	Canny(blurred, canny, cannyLowTreshold, cannyLowTreshold * cannyHighLowtRatio);
-	namedWindow("Canny", CV_WINDOW_AUTOSIZE);
-	imshow("Canny", canny);
-
-	Mat result = Mat::zeros(canny.rows, canny.cols, CV_8UC3);
-	// используется в двух местах для отсекания кривых, смахивающих на линии
-	const int lineSimilarityThreshold = 20; // предельное число точек подряд, у которых одна из координат неизменна
-
-	for(int row = 0; row < canny.rows; row++){ 
-		uchar* p = canny.ptr(row);
-		short* sX = sobelX.ptr<short>(row);
-		short* sY = sobelY.ptr<short>(row);
-		for(int col = 0; col < canny.cols; col++, p++, sX++, sY++) {
-			if(*p == 255 && *sX != 0){
-				// определяем направление градиента (отделяем  II и IV от I и III)
-				int dx, dy; // смещения, прибавляемые к граничным точкам
-				int yBorder, sYsXSign;
-				if(*sY * *sX > 0){ // знак такой же, как и *sY / *sX, но умножение чуть быстрее
-					dx = 1; dy = -1; yBorder = 0; sYsXSign = 1;
-				}
-				else if(*sY * *sX < 0){
-					dx = 1; dy = 1; yBorder = canny.rows-1; sYsXSign = -1;
-				}
-				else
-					continue;
-				list<Point> new_arc;
-				new_arc.push_front(Point(col, row));
-				canny.at<uchar>(Point(col, row)) = 0;	
-
-				// ищем все принадлежащие этой арке точки
-				int rightX, rightY, leftX, leftY;
-				int newRightX = col, newRightY = row;
-				// переменные для контроля за кривизной
-				int looksLikeVerticalLine = 0, looksLikeHorizontalLine = 0;
-				do{  // ищем точки кривой вправо от исходной
-					rightX = newRightX; rightY = newRightY;
-					uchar* h = canny.ptr(rightY + dy); // точка по диагонали
-					h += rightX + dx;
-					if(*h == 255){
-						short* new_sX = sobelX.ptr<short>(rightY + dy); // проверяем, что направление градиента в этой точке остаётся тем же
-						new_sX += rightX + dx;
-						short* new_sY = sobelY.ptr<short>(rightY + dy);
-						new_sY += rightX + dx;
-						if(sYsXSign * (*new_sY) * (*new_sX) > 0){ // знаки совпадают, всё хорошо
-							newRightY = rightY + dy;
-							newRightX = rightX + dx;
-							looksLikeVerticalLine = 0;	looksLikeHorizontalLine = 0;
-							new_arc.push_front(Point(newRightX, newRightY));
-							canny.at<uchar>(Point(newRightX, newRightY)) = 0;
-							continue;
-						}
-					}
-					h = canny.ptr(rightY + dy); // изменился только y
-					h += rightX;
-					if(*h == 255){
-						// проверяем, как давно менялся x
-						looksLikeVerticalLine++;
-						// если слишком давно, то наша кривая постепенно превращается в вертикальную прямую и нужно оборвать её
-						// если нет, то продолжаем
-						if(looksLikeVerticalLine < lineSimilarityThreshold){
-							short* new_sX = sobelX.ptr<short>(rightY + dy); // проверяем, что направление градиента в этой точке остаётся тем же
-							new_sX += rightX;
-							short* new_sY = sobelY.ptr<short>(rightY + dy);
-							new_sY += rightX;
-							if(sYsXSign * (*new_sY) * (*new_sX) > 0){
-								newRightY = rightY + dy;
-								looksLikeHorizontalLine = 0;
-								new_arc.push_front(Point(newRightX, newRightY));
-								canny.at<uchar>(Point(newRightX, newRightY)) = 0;
-								continue;
-							}
-						}
-					}
-					h = canny.ptr(rightY); // изменился только х
-					h += rightX + dx;
-					if(*h == 255){
-						// проверяем, как давно менялся y
-						looksLikeHorizontalLine++;
-						if(looksLikeHorizontalLine < lineSimilarityThreshold){
-							short* new_sX = sobelX.ptr<short>(rightY); // проверяем, что направление градиента в этой точке остаётся тем же
-							new_sX += rightX + dx;
-							short* new_sY = sobelY.ptr<short>(rightY);
-							new_sY += rightX + dx;
-							if(sYsXSign * (*new_sY) * (*new_sX) > 0){
-								newRightX = rightX + dx;
-								looksLikeVerticalLine = 0;
-								new_arc.push_front(Point(newRightX, newRightY));
-								canny.at<uchar>(Point(newRightX, newRightY)) = 0;
-								continue;
-							}
-						}
-					}
-				// выполняем пока верхняя/правая граница не перестанет меняться или не упрёмся в край изображения
-				}while(!(newRightX==rightX && newRightY==rightY) && newRightX != canny.cols-1 && newRightY != yBorder);
-
-				yBorder = yBorder==0 ? canny.rows - 1 : 0;
-				int newLeftX = col, newLeftY = row;
-				looksLikeVerticalLine = 0; looksLikeHorizontalLine = 0;
-				do{
-					leftX = newLeftX; leftY = newLeftY;
-					uchar* l = canny.ptr(leftY - dy); // точка по диагонали
-					l += leftX - dx;
-					if(*l == 255){
-						short* new_sX = sobelX.ptr<short>(leftY - dy); // проверяем, что направление градиента в этой точке остаётся тем же
-						new_sX += leftX - dx;
-						short* new_sY = sobelY.ptr<short>(leftY - dy);
-						new_sY += leftX - dx;
-						if(sYsXSign * (*new_sY) * (*new_sX) > 0){ // знаки совпадают, всё хорошо
-							newLeftX = leftX - dx;
-							newLeftY = leftY - dy;
-							looksLikeVerticalLine = 0;	looksLikeHorizontalLine = 0;
-							new_arc.push_back(Point(newLeftX, newLeftY));
-							canny.at<uchar>(Point(newLeftX, newLeftY)) = 0;
-							continue;
-						}
-					}
-					l = canny.ptr(leftY - dy); // изменился только y
-					l += leftX;
-					if(*l == 255){
-						// проверяем, как давно менялся x
-						looksLikeVerticalLine++;
-						if(looksLikeVerticalLine < lineSimilarityThreshold){
-							short* new_sX = sobelX.ptr<short>(leftY - dy); // проверяем, что направление градиента в этой точке остаётся тем же
-							new_sX += leftX;
-							short* new_sY = sobelY.ptr<short>(leftY - dy);
-							new_sY += leftX;
-							if(sYsXSign * (*new_sY) * (*new_sX) > 0){
-								newLeftY = leftY - dy;
-								looksLikeHorizontalLine = 0;
-								new_arc.push_back(Point(newLeftX, newLeftY));
-								canny.at<uchar>(Point(newLeftX, newLeftY)) = 0;
-								continue;
-							}
-						}
-					}
-
-
-					l = canny.ptr(leftY); // изменился только х
-					l += leftX - dx;
-					if(*l == 255){
-						// проверяем, как давно менялся y
-						looksLikeHorizontalLine++;
-						if(looksLikeHorizontalLine < lineSimilarityThreshold){
-							short* new_sX = sobelX.ptr<short>(leftY); // проверяем, что направление градиента в этой точке остаётся тем же
-							new_sX += leftX - dx;
-							short* new_sY = sobelY.ptr<short>(leftY);
-							new_sY += leftX - dx;
-							if(sYsXSign * (*new_sY) * (*new_sX) > 0){
-								newLeftX = leftX - dx;
-								looksLikeVerticalLine = 0;
-								new_arc.push_back(Point(newLeftX, newLeftY));
-								canny.at<uchar>(Point(newLeftX, newLeftY)) = 0;
-								continue;
-							}
-						}
-					}
-				// выполняем пока нижняя/левая граница не перестанет меняться или не упрёмся в край изображения
-				}while(!(newLeftX==leftX && newLeftY==leftY) && newLeftX != 0 && newLeftY != yBorder);
-					
-				// отсекаем слишком короткие дуги
-				if(new_arc.size() <= 16)
-					continue;
-				// отсекаем слишком вытянутые (смахивающие на вертикальные или горизонтальные прямые)
-				double width = rightX - leftX;
-				double height = abs(rightY - leftY);
-				if(width/height >= lineSimilarityThreshold || height/width >= lineSimilarityThreshold)
-					continue;
-
-				// если площадь под кривой отличается от площади над кривой меньше,
-				// чем на eps * totalSquare, то отбрасываем эту кривую как не выпуклую и не вогнутую
-				// (слишком похожую на прямую)
-				double eps = 0.1;
-				if(rightY > leftY){ // I или III четверть
-					// считаем площади под и над кривой
-					int underSquare = 0, totalSquare = abs((rightX - leftX) * (rightY - leftY));
-					auto i = new_arc.begin();
-					int prev_x = i->x;
-					i++;
-					for(;i != new_arc.end(); i++){
-						if(i->x != prev_x){ // если у кривой меняется только y, то избегаем считать один столбец дважды
-							underSquare += rightY - i->y;
-							prev_x = i->x;
-						}
-					}
-					if(underSquare - (totalSquare - underSquare) > eps*totalSquare) // выпуклая вверх кривая - I 
-						arcs[0].push_back(new_arc);
-					else if(underSquare - (totalSquare - underSquare) < -eps*totalSquare)  // вупыклая вниз кривая - III
-						arcs[2].push_back(new_arc);
-
-				}
-				else{ // II или IV 
-					int underSquare = 0, totalSquare = abs((rightX - leftX) * (leftY - rightY));
-					auto i = new_arc.begin();
-					int prev_x = i->x;
-					i++;
-					for(;i != new_arc.end(); i++){
-						if(i->x != prev_x){ // если у кривой меняется только y, то избегаем считать один столбец дважды
-							underSquare += leftY - i->y;
-							prev_x = i->x;
-						}
-					}
-					if(underSquare - (totalSquare - underSquare) > eps*totalSquare) // выпуклая вверх кривая - II
-						arcs[1].push_back(new_arc);
-					else if(underSquare - (totalSquare - underSquare) < -eps*totalSquare) // вупыклая вниз кривая - IV
-						arcs[3].push_back(new_arc);
-				}
-			}
-		}
-    }
-
-	uchar aI_color[3] = {0, 0, 255};
-	uchar aII_color[3] = {0, 255, 0};
-	uchar aIII_color[3] = {255, 0, 0};
-	uchar aIV_color[3] = {0, 255, 255};
-	for(auto aI = arcs[0].begin(); aI != arcs[0].end(); aI++){
-		drawArc(result, *aI, aI_color);
-	}
-	for(auto aII = arcs[1].begin(); aII != arcs[1].end(); aII++){
-		drawArc(result, *aII, aII_color);
-	}
-	for(auto aIII = arcs[2].begin(); aIII != arcs[2].end(); aIII++){
-		drawArc(result, *aIII, aIII_color);
-	}
-	for(auto aIV = arcs[3].begin(); aIV != arcs[3].end(); aIV++){
-		drawArc(result, *aIV, aIV_color);
-	}
-	return result;
-}
 
 void choosePossibleTriplets(){
 	// сначала выбираем совместные пары
@@ -446,8 +226,9 @@ Mat parallelsTest(){
 		}
 	}
 	return canvas;
-}
+}*/
 
+	/*
 // функция возвращает коэффициенту уравнения прямой
 template <class Edge_Iterator, class Middle_Iterator>
 Point3d findLineCrossingChords(Edge_Iterator edge, Middle_Iterator middle, Edge_Iterator edgeArcBorder, Middle_Iterator middleArcBorder){
@@ -619,4 +400,4 @@ Point findCenterIVandI(int arcIV, int arcI, bool& errorFlag){
 		center.x = (-line2.z - line2.y*center.y) / line2.x;
 	}
 	return center;
-}
+}*/
