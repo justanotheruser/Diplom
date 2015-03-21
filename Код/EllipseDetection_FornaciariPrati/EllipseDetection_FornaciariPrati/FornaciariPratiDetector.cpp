@@ -6,6 +6,25 @@ using namespace cv;
 using std::string;
 using std::list;
 
+namespace
+{
+	void displayImageAndWaitKey(const char* title, const Mat& img)
+	{
+		namedWindow(title, CV_WINDOW_AUTOSIZE);
+		imshow(title, img);
+		waitKey(0);
+	}
+}
+
+void drawArc(Mat& canvas, const list<Point>& arc, uchar* color){
+	for(auto i = arc.begin(); i != arc.end(); i++){
+		canvas.at<cv::Vec3b>(*i)[0] = color[0];
+		canvas.at<cv::Vec3b>(*i)[1] = color[1];
+		canvas.at<cv::Vec3b>(*i)[2] = color[2];
+	}
+}
+
+
 vector<Ellipse> FornaciariPratiDetector::DetectEllipses(const Mat& src)
 {
 	vector<Ellipse> ellipses;
@@ -14,11 +33,48 @@ vector<Ellipse> FornaciariPratiDetector::DetectEllipses(const Mat& src)
 
 vector<Ellipse> FornaciariPratiDetector::DetailedEllipseDetection(const Mat& src)
 {
-	namedWindow("Source image", CV_WINDOW_AUTOSIZE);
-	imshow("Source image", src);
-	waitKey(0);
+	// исходное изображение
+	//namedWindow("Source image", CV_WINDOW_AUTOSIZE);
+	//imshow("Source image", src);
+	//waitKey(0);
+
+	// TODO: считать операторы Собеля эффективно
+	// http://www.youtube.com/watch?v=lC-IrZsdTrw
+	Mat canny, sobelX, sobelY;
+	getSobelDerivatives(src);
+	// TODO: реализовать детектор Кенни самому с переиспользованием посчитанных собелей
+	useCannyDetector();
+
+	/*Mat arcs = findArcs(src);
+	namedWindow("Arcs", CV_WINDOW_AUTOSIZE);
+	imshow("Arcs", arcs);*/
+
+
+
 	vector<Ellipse> ellipses;
 	return ellipses;
+}
+
+void FornaciariPratiDetector::getSobelDerivatives(const Mat& src)
+{
+	int blurKernelSize = 3, sobelKernelSize = 3;
+	double blurSigma = 1;
+	GaussianBlur(src, m_blurred, Size(blurKernelSize, blurKernelSize), blurSigma, blurSigma);
+	Mat cv_16_sobelX, cv_16_sobelY;
+	Sobel(m_blurred, cv_16_sobelX, CV_16S, 1, 0, sobelKernelSize);
+	Sobel(m_blurred, cv_16_sobelY, CV_16S, 0, 1, sobelKernelSize);
+	convertScaleAbs(cv_16_sobelX, m_sobelX);
+	convertScaleAbs(cv_16_sobelY, m_sobelY);
+	displayImageAndWaitKey("SobelX", m_sobelX);
+	displayImageAndWaitKey("SobelY", m_sobelY);
+}
+
+void FornaciariPratiDetector::useCannyDetector()
+{
+	int cannyLowTreshold = 50;
+	double cannyHighLowtRatio = 2.5;
+	Canny(m_blurred, m_canny, cannyLowTreshold, cannyLowTreshold * cannyHighLowtRatio);
+	displayImageAndWaitKey("Canny", m_canny);
 }
 
 Mat FornaciariPratiDetector::findArcs(const Mat& src){
@@ -37,7 +93,7 @@ Mat FornaciariPratiDetector::findArcs(const Mat& src){
 
 	Mat result = Mat::zeros(canny.rows, canny.cols, CV_8UC3);
 	// используется в двух местах для отсекания кривых, смахивающих на линии
-	const int lineSimilarityThreshold = 20; // предельное число точек подряд, у которых одна из координат неизменна
+	/*const int lineSimilarityThreshold = 20; // предельное число точек подряд, у которых одна из координат неизменна
 
 	for(int row = 0; row < canny.rows; row++){ 
 		uchar* p = canny.ptr(row);
@@ -246,16 +302,16 @@ Mat FornaciariPratiDetector::findArcs(const Mat& src){
 	uchar aIII_color[3] = {255, 0, 0};
 	uchar aIV_color[3] = {0, 255, 255};
 	for(auto aI = arcs[0].begin(); aI != arcs[0].end(); aI++){
-		//drawArc(result, *aI, aI_color);
+		drawArc(result, *aI, aI_color);
 	}
 	for(auto aII = arcs[1].begin(); aII != arcs[1].end(); aII++){
-		//drawArc(result, *aII, aII_color);
+		drawArc(result, *aII, aII_color);
 	}
 	for(auto aIII = arcs[2].begin(); aIII != arcs[2].end(); aIII++){
-		//drawArc(result, *aIII, aIII_color);
+		drawArc(result, *aIII, aIII_color);
 	}
 	for(auto aIV = arcs[3].begin(); aIV != arcs[3].end(); aIV++){
-		//drawArc(result, *aIV, aIV_color);
-	}
+		drawArc(result, *aIV, aIV_color);
+	}*/
 	return result;
 }
