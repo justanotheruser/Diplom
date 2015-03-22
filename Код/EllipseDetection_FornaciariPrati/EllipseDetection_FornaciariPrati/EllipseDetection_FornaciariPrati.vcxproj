@@ -75,12 +75,14 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Arc.cpp" />
     <ClCompile Include="Ellipse.cpp" />
     <ClCompile Include="FornaciariPratiDetector.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="Stub.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Arc.h" />
     <ClInclude Include="Ellipse.h" />
     <ClInclude Include="EllipseDetectionLibrary.h" />
     <ClInclude Include="EllipseDetector.h" />

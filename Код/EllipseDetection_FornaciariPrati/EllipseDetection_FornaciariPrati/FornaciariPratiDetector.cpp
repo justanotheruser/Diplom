@@ -1,6 +1,7 @@
 #include "FornaciariPratiDetector.h"
 #include <list>
 #include "opencv2\highgui\highgui.hpp"
+#include "Arc.h"
 
 using namespace cv;
 using std::string;
@@ -8,22 +9,13 @@ using std::list;
 
 namespace
 {
-	void displayImageAndWaitKey(const char* title, const Mat& img)
+	void displayImage(const char* title, const Mat& img, bool wait=false)
 	{
 		namedWindow(title, CV_WINDOW_AUTOSIZE);
 		imshow(title, img);
-		waitKey(0);
+		if(wait) waitKey(0);
 	}
 }
-
-void drawArc(Mat& canvas, const list<Point>& arc, uchar* color){
-	for(auto i = arc.begin(); i != arc.end(); i++){
-		canvas.at<cv::Vec3b>(*i)[0] = color[0];
-		canvas.at<cv::Vec3b>(*i)[1] = color[1];
-		canvas.at<cv::Vec3b>(*i)[2] = color[2];
-	}
-}
-
 
 vector<Ellipse> FornaciariPratiDetector::DetectEllipses(const Mat& src)
 {
@@ -34,9 +26,7 @@ vector<Ellipse> FornaciariPratiDetector::DetectEllipses(const Mat& src)
 vector<Ellipse> FornaciariPratiDetector::DetailedEllipseDetection(const Mat& src)
 {
 	// исходное изображение
-	//namedWindow("Source image", CV_WINDOW_AUTOSIZE);
-	//imshow("Source image", src);
-	//waitKey(0);
+	displayImage("Source", src);
 
 	// TODO: считать операторы Собеля эффективно
 	// http://www.youtube.com/watch?v=lC-IrZsdTrw
@@ -45,12 +35,17 @@ vector<Ellipse> FornaciariPratiDetector::DetailedEllipseDetection(const Mat& src
 	// TODO: реализовать детектор Кенни самому с переиспользованием посчитанных собелей
 	useCannyDetector();
 
+	// TODO: добавить альтернативный способ поиска арок:
+	// InTech-Methods_for_ellipse_detection_from_edge_maps_of_real_images.pdf
+	heuristicSearchOfArcs();
+
+
 	/*Mat arcs = findArcs(src);
 	namedWindow("Arcs", CV_WINDOW_AUTOSIZE);
 	imshow("Arcs", arcs);*/
 
 
-
+	waitKey(0);
 	vector<Ellipse> ellipses;
 	return ellipses;
 }
@@ -60,13 +55,13 @@ void FornaciariPratiDetector::getSobelDerivatives(const Mat& src)
 	int blurKernelSize = 3, sobelKernelSize = 3;
 	double blurSigma = 1;
 	GaussianBlur(src, m_blurred, Size(blurKernelSize, blurKernelSize), blurSigma, blurSigma);
-	Mat cv_16_sobelX, cv_16_sobelY;
-	Sobel(m_blurred, cv_16_sobelX, CV_16S, 1, 0, sobelKernelSize);
-	Sobel(m_blurred, cv_16_sobelY, CV_16S, 0, 1, sobelKernelSize);
-	convertScaleAbs(cv_16_sobelX, m_sobelX);
-	convertScaleAbs(cv_16_sobelY, m_sobelY);
-	displayImageAndWaitKey("SobelX", m_sobelX);
-	displayImageAndWaitKey("SobelY", m_sobelY);
+	Sobel(m_blurred, m_sobelX, CV_16S, 1, 0, sobelKernelSize);
+	Sobel(m_blurred, m_sobelY, CV_16S, 0, 1, sobelKernelSize);
+	Mat cv_8u_sobelX, cv_8u_sobelY;
+	convertScaleAbs(m_sobelX, cv_8u_sobelX);
+	convertScaleAbs(m_sobelY, cv_8u_sobelY);
+	displayImage("SobelX", cv_8u_sobelX);
+	displayImage("SobelY", cv_8u_sobelY);
 }
 
 void FornaciariPratiDetector::useCannyDetector()
@@ -74,24 +69,66 @@ void FornaciariPratiDetector::useCannyDetector()
 	int cannyLowTreshold = 50;
 	double cannyHighLowtRatio = 2.5;
 	Canny(m_blurred, m_canny, cannyLowTreshold, cannyLowTreshold * cannyHighLowtRatio);
-	displayImageAndWaitKey("Canny", m_canny);
+	displayImage("Canny", m_canny);
+}
+
+void FornaciariPratiDetector::heuristicSearchOfArcs()
+{
+	Arcs arcsInCoordinateQuarters[4];
+	Arcs allArcs;
+	for(int row = 0; row < m_canny.rows; row++)
+	{ 
+		uchar* p = m_canny.ptr(row);
+		short* sX = m_sobelX.ptr<short>(row);
+		short* sY = m_sobelY.ptr<short>(row);
+		for(int col = 0; col < m_canny.cols; col++, p++, sX++, sY++) 
+		{
+			// start searching only from points with diagonal gradient
+			if(*p == 255 && *sX != 0 && *sY != 0)
+			{
+				Arc newArc = findArcThatIncludesPoint(col, row, sX, sY);
+				allArcs.push_back(newArc);
+			}
+		}
+	}
+
+	Mat result = Mat::zeros(m_canny.rows, m_canny.cols, CV_8UC3);
+	uchar white[3] = {255, 255, 255};
+	for (auto arc : allArcs)
+	{
+		arc.DrawArc(result, white);
+	}
+	displayImage("All arcs", result); 
+}
+
+Arc FornaciariPratiDetector::findArcThatIncludesPoint(int col, int row, short* sX, short* sY)
+{
+	// определяем направление градиента (отделяем II и IV от I и III)
+	bool growsInTheRight;
+	if(*sX > 0 && *sY > 0 || *sX < 0 && *sY < 0)
+	{
+		growsInTheRight = true;
+	}
+	else
+	{
+		growsInTheRight = false;
+	}
+	Arc arc(growsInTheRight, Point(col, row));
+
+
+
+
+
+
+
+
+	return arc;
 }
 
 Mat FornaciariPratiDetector::findArcs(const Mat& src){
 	vector<list<Point>> arcs[4];
+	Mat result = Mat::zeros(m_canny.rows, m_canny.cols, CV_8UC3);
 
-	Mat blurred, sobelX, sobelY, canny;
-	int cannyLowTreshold = 50, blurKernelSize = 3, sobelKernelSize = 3;
-	double blurSigma = 1, cannyHighLowtRatio = 2.5;
-
-	GaussianBlur(src, blurred, Size(blurKernelSize, blurKernelSize), blurSigma, blurSigma); 
-	Sobel(blurred, sobelX, CV_16S, 1, 0, sobelKernelSize);
-	Sobel(blurred, sobelY, CV_16S, 0, 1, sobelKernelSize);
-	Canny(blurred, canny, cannyLowTreshold, cannyLowTreshold * cannyHighLowtRatio);
-	namedWindow("Canny", CV_WINDOW_AUTOSIZE);
-	imshow("Canny", canny);
-
-	Mat result = Mat::zeros(canny.rows, canny.cols, CV_8UC3);
 	// используется в двух местах для отсекания кривых, смахивающих на линии
 	/*const int lineSimilarityThreshold = 20; // предельное число точек подряд, у которых одна из координат неизменна
 
