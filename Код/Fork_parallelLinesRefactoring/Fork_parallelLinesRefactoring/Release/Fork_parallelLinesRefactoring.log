@@ -1,9 +1,49 @@
-﻿Построение начато 3/18/2015 3:58:24 PM.
-     1>Проект "C:\Диплом\Код\Fork_parallelLinesRefactoring\Fork_parallelLinesRefactoring\Fork_parallelLinesRefactoring.vcxproj" в узле 2 (целевые объекты Build).
-     1>Link:
-         Fork_parallelLinesRefactoring.vcxproj -> C:\Диплом\Код\Fork_parallelLinesRefactoring\Release\Fork_parallelLinesRefactoring.exe
-     1>Построение проекта "C:\Диплом\Код\Fork_parallelLinesRefactoring\Fork_parallelLinesRefactoring\Fork_parallelLinesRefactoring.vcxproj" завершено (целевые объекты Build).
+﻿Построение начато 3/15/2015 2:32:08 PM.
+     1>Проект "C:\Диплом\Диплом\Fork_parallelLinesRefactoring\Fork_parallelLinesRefactoring\Fork_parallelLinesRefactoring.vcxproj" в узле 2 (целевые объекты Build).
+     1>ClCompile:
+         C:\Program Files\Microsoft Visual Studio 11.0\VC\bin\CL.exe /c /Zi /nologo /W3 /WX- /sdl /O2 /Oi /Oy- /GL /D _MBCS /Gm- /EHsc /MD /GS /Gy /fp:precise /Zc:wchar_t /Zc:forScope /Fo"Release\\" /Fd"Release\vc110.pdb" /Gd /TP /analyze- /errorReport:prompt main.cpp
+         main.cpp
+     1>main.cpp(307): warning C4018: <: несоответствие типов со знаком и без знака
+     1>main.cpp(308): warning C4018: <: несоответствие типов со знаком и без знака
+     1>main.cpp(313): warning C4018: <: несоответствие типов со знаком и без знака
+     1>main.cpp(314): warning C4018: <: несоответствие типов со знаком и без знака
+     1>main.cpp(320): warning C4018: <: несоответствие типов со знаком и без знака
+     1>main.cpp(321): warning C4018: <: несоответствие типов со знаком и без знака
+     1>main.cpp(326): warning C4018: <: несоответствие типов со знаком и без знака
+     1>main.cpp(327): warning C4018: <: несоответствие типов со знаком и без знака
+     1>main.cpp(333): warning C4018: <: несоответствие типов со знаком и без знака
+     1>main.cpp(334): warning C4018: <: несоответствие типов со знаком и без знака
+     1>main.cpp(340): warning C4018: <: несоответствие типов со знаком и без знака
+     1>main.cpp(341): warning C4018: <: несоответствие типов со знаком и без знака
+     1>main.cpp(346): warning C4018: <: несоответствие типов со знаком и без знака
+     1>main.cpp(347): warning C4018: <: несоответствие типов со знаком и без знака
+     1>main.cpp(352): warning C4018: <: несоответствие типов со знаком и без знака
+     1>main.cpp(353): warning C4018: <: несоответствие типов со знаком и без знака
+     1>main.cpp(371): warning C4018: <: несоответствие типов со знаком и без знака
+     1>main.cpp(389): warning C4018: <: несоответствие типов со знаком и без знака
+     1>main.cpp(523): warning C4244: =: преобразование "double" в "int", возможна потеря данных
+     1>main.cpp(524): warning C4244: =: преобразование "double" в "int", возможна потеря данных
+     1>main.cpp(527): warning C4244: =: преобразование "double" в "int", возможна потеря данных
+     1>main.cpp(528): warning C4244: =: преобразование "double" в "int", возможна потеря данных
+     1>main.cpp(554): warning C4244: =: преобразование "double" в "int", возможна потеря данных
+     1>main.cpp(555): warning C4244: =: преобразование "double" в "int", возможна потеря данных
+     1>main.cpp(558): warning C4244: =: преобразование "double" в "int", возможна потеря данных
+     1>main.cpp(559): warning C4244: =: преобразование "double" в "int", возможна потеря данных
+     1>main.cpp(584): warning C4244: =: преобразование "double" в "int", возможна потеря данных
+     1>main.cpp(585): warning C4244: =: преобразование "double" в "int", возможна потеря данных
+     1>main.cpp(588): warning C4244: =: преобразование "double" в "int", возможна потеря данных
+     1>main.cpp(589): warning C4244: =: преобразование "double" в "int", возможна потеря данных
+     1>main.cpp(614): warning C4244: =: преобразование "double" в "int", возможна потеря данных
+     1>main.cpp(615): warning C4244: =: преобразование "double" в "int", возможна потеря данных
+     1>main.cpp(618): warning C4244: =: преобразование "double" в "int", возможна потеря данных
+     1>main.cpp(619): warning C4244: =: преобразование "double" в "int", возможна потеря данных
+       Link:
+         C:\Program Files\Microsoft Visual Studio 11.0\VC\bin\link.exe /ERRORREPORT:PROMPT /OUT:"C:\Диплом\Диплом\Fork_parallelLinesRefactoring\Release\Fork_parallelLinesRefactoring.exe" /NOLOGO opencv_calib3d248.lib opencv_contrib248.lib opencv_core248.lib opencv_features2d248.lib opencv_flann248.lib opencv_gpu248.lib opencv_highgui248.lib opencv_imgproc248.lib opencv_legacy248.lib opencv_ml248.lib opencv_nonfree248.lib opencv_objdetect248.lib opencv_photo248.lib opencv_stitching248.lib opencv_superres248.lib opencv_ts248.lib opencv_video248.lib opencv_videostab248.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:\Диплом\Диплом\Fork_parallelLinesRefactoring\Release\Fork_parallelLinesRefactoring.pdb" /OPT:REF /OPT:ICF /LTCG /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"C:\Диплом\Диплом\Fork_parallelLinesRefactoring\Release\Fork_parallelLinesRefactoring.lib" /MACHINE:X86 /SAFESEH Release\main.obj
+         Создание кода
+         Создание кода завершено
+         Fork_parallelLinesRefactoring.vcxproj -> C:\Диплом\Диплом\Fork_parallelLinesRefactoring\Release\Fork_parallelLinesRefactoring.exe
+     1>Построение проекта "C:\Диплом\Диплом\Fork_parallelLinesRefactoring\Fork_parallelLinesRefactoring\Fork_parallelLinesRefactoring.vcxproj" завершено (целевые объекты Build).
 
 Построение успешно завершено.
 
-Затраченное время: 00:00:00.93
+Затраченное время: 00:00:10.56
