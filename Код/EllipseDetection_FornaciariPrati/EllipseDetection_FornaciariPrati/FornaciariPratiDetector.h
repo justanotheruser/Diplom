@@ -14,10 +14,9 @@ public:
 private:
 	void getSobelDerivatives(const Mat& src);
 	void useCannyDetector();
-	// мои оригинальные методы
 	void heuristicSearchOfArcs();
-	// last 2 params passed for omptimization purposes
 	Arc findArcThatIncludesPoint(int x, int y, short* sX, short* sY);
+	bool isEdgePoint(const Point& point);
 	Mat findArcs(const Mat& src);
 
 private:

@@ -1,21 +1,21 @@
 #include "Arc.h"
 
-Arc::Arc(bool growsInTheRight, const Point& startPoint) : m_growsInTheRight(growsInTheRight) 
+Arc::Arc(const Point& startPoint) 
 {
 	m_points.emplace_back(startPoint);
 	m_mostRightPoint = m_mostLeftPoint = startPoint;
 }
 
-void Arc::addToTheRight(const Point& point)
+void Arc::AddToTheRight(const Point& point)
 {
 	m_points.push_front(point);
 	m_mostRightPoint = point;
 }
 
-void Arc::addToTheLeft(const Point& point)
+void Arc::AddToTheLeft(const Point& point)
 {
 	m_points.push_back(point);
-	m_mostRightPoint = point;
+	m_mostLeftPoint = point;
 }
 
 void Arc::DrawArc(cv::Mat& canvas, uchar* color){

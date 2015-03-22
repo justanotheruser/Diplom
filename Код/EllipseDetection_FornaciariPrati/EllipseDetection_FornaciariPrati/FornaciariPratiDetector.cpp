@@ -26,11 +26,12 @@ vector<Ellipse> FornaciariPratiDetector::DetectEllipses(const Mat& src)
 vector<Ellipse> FornaciariPratiDetector::DetailedEllipseDetection(const Mat& src)
 {
 	// исходное изображение
-	displayImage("Source", src);
+	//displayImage("Source", src);
 
 	// TODO: считать операторы Собеля эффективно
 	// http://www.youtube.com/watch?v=lC-IrZsdTrw
 	Mat canny, sobelX, sobelY;
+
 	getSobelDerivatives(src);
 	// TODO: реализовать детектор Кенни самому с переиспользованием посчитанных собелей
 	useCannyDetector();
@@ -60,8 +61,8 @@ void FornaciariPratiDetector::getSobelDerivatives(const Mat& src)
 	Mat cv_8u_sobelX, cv_8u_sobelY;
 	convertScaleAbs(m_sobelX, cv_8u_sobelX);
 	convertScaleAbs(m_sobelY, cv_8u_sobelY);
-	displayImage("SobelX", cv_8u_sobelX);
-	displayImage("SobelY", cv_8u_sobelY);
+	//displayImage("SobelX", cv_8u_sobelX);
+	//displayImage("SobelY", cv_8u_sobelY);
 }
 
 void FornaciariPratiDetector::useCannyDetector()
@@ -69,7 +70,7 @@ void FornaciariPratiDetector::useCannyDetector()
 	int cannyLowTreshold = 50;
 	double cannyHighLowtRatio = 2.5;
 	Canny(m_blurred, m_canny, cannyLowTreshold, cannyLowTreshold * cannyHighLowtRatio);
-	displayImage("Canny", m_canny);
+	//displayImage("Canny", m_canny);
 }
 
 void FornaciariPratiDetector::heuristicSearchOfArcs()
@@ -87,41 +88,141 @@ void FornaciariPratiDetector::heuristicSearchOfArcs()
 			if(*p == 255 && *sX != 0 && *sY != 0)
 			{
 				Arc newArc = findArcThatIncludesPoint(col, row, sX, sY);
+				if (newArc.Size() <= 16) // отсекаем слишком маленькие дуги
+					continue;
 				allArcs.push_back(newArc);
 			}
 		}
 	}
 
 	Mat result = Mat::zeros(m_canny.rows, m_canny.cols, CV_8UC3);
-	uchar white[3] = {255, 255, 255};
+	
 	for (auto arc : allArcs)
 	{
-		arc.DrawArc(result, white);
+		uchar arcColor[3] = {rand() % 255, rand() % 255, rand() % 255};
+		arc.DrawArc(result, arcColor);
 	}
 	displayImage("All arcs", result); 
 }
 
 Arc FornaciariPratiDetector::findArcThatIncludesPoint(int col, int row, short* sX, short* sY)
 {
+	Arc arc(Point(col, row));
+	m_canny.at<uchar>(Point(col, row)) = 0;
+	Point newPoint, lastMostRight, lastMostLeft;
+	const int HORIZONTAL_LINE_THESHOLD = 20;
+	const int VERTICAL_LINE_THESHOLD = 20;
+	const int DIAGONAL_LINE_THESHOLD = 20;
+	int verticalLineCounter = 0, horizontalLineCounter = 0, diagonalLineCounter = 0;
 	// определяем направление градиента (отделяем II и IV от I и III)
-	bool growsInTheRight;
 	if(*sX > 0 && *sY > 0 || *sX < 0 && *sY < 0)
 	{
-		growsInTheRight = true;
+		// ищем новые точки дуги слева пока не перестанем находить
+		do
+		{
+			newPoint = lastMostLeft = arc.GetMostLeftPoint();
+			// если упёрлись в нижнюю границу, то у этой точки нет нижней и диагональной соседей
+			if (lastMostLeft.y + 1 <= m_canny.rows-1)
+			{
+				// строго вниз
+				newPoint = lastMostLeft + Point(0, 1);
+				if (isEdgePoint(newPoint) && verticalLineCounter < VERTICAL_LINE_THESHOLD)
+				{
+					arc.AddToTheLeft(newPoint);
+					verticalLineCounter++;
+					diagonalLineCounter = horizontalLineCounter = 0;
+				}
+				else if (lastMostLeft.x - 1 >= 0)
+				{
+					// диагональная точка
+					newPoint = lastMostLeft + Point(-1, 1);
+					if (isEdgePoint(newPoint) && diagonalLineCounter < DIAGONAL_LINE_THESHOLD)
+					{
+						arc.AddToTheLeft(newPoint);
+						diagonalLineCounter++;
+						horizontalLineCounter = verticalLineCounter = 0;
+					}
+					else
+					{
+						// строго влево
+						newPoint = lastMostLeft + Point(-1, 0);
+						if (isEdgePoint(newPoint) && horizontalLineCounter < HORIZONTAL_LINE_THESHOLD)
+						{
+							arc.AddToTheLeft(newPoint);
+							horizontalLineCounter++;
+							diagonalLineCounter = verticalLineCounter = 0;
+						}
+					}
+				}
+			}
+			else if (lastMostLeft.x - 1 >= 0)
+			{
+				// строго влево
+				newPoint = lastMostLeft + Point(-1, 0);
+				if (isEdgePoint(newPoint) && horizontalLineCounter < HORIZONTAL_LINE_THESHOLD)
+				{
+					arc.AddToTheLeft(newPoint);
+					horizontalLineCounter++;
+					diagonalLineCounter = verticalLineCounter = 0;
+				}
+			}
+		} while(lastMostLeft != arc.GetMostLeftPoint());
 	}
 	else
 	{
-		growsInTheRight = false;
+		do
+		{
+			newPoint = lastMostRight = arc.GetMostRightPoint();
+			// если упёрлись в нижнюю границу, то у этой точки нет нижней и диагональной соседей
+			if (lastMostRight.y + 1 <= m_canny.rows-1)
+			{
+				// строго вниз
+				newPoint = lastMostRight + Point(0, 1);
+				if (isEdgePoint(newPoint) && verticalLineCounter < VERTICAL_LINE_THESHOLD)
+				{
+					arc.AddToTheRight(newPoint);
+					verticalLineCounter++;
+					diagonalLineCounter = horizontalLineCounter = 0;
+
+				}
+				else if (lastMostRight.x + 1 <= m_canny.cols-1)
+				{
+					// диагональная точка
+					newPoint = lastMostRight + Point(1, 1);
+					if (isEdgePoint(newPoint) && diagonalLineCounter < DIAGONAL_LINE_THESHOLD)
+					{
+						arc.AddToTheRight(newPoint);
+						diagonalLineCounter++;
+						verticalLineCounter = horizontalLineCounter = 0;
+
+					}
+					else
+					{
+						// строго влево
+						newPoint = lastMostRight + Point(1, 0);
+						if (isEdgePoint(newPoint) && horizontalLineCounter < HORIZONTAL_LINE_THESHOLD)
+						{
+							arc.AddToTheRight(newPoint);
+							horizontalLineCounter++;
+							diagonalLineCounter = verticalLineCounter = 0;
+
+						}
+					}
+				}
+			}
+			else if (lastMostRight.x + 1 <= m_canny.cols-1)
+			{
+				// строго влево
+				newPoint = lastMostRight + Point(1, 0);
+				if (isEdgePoint(newPoint) && horizontalLineCounter < HORIZONTAL_LINE_THESHOLD)
+				{
+					arc.AddToTheRight(newPoint);
+					horizontalLineCounter++;
+					diagonalLineCounter = verticalLineCounter = 0;
+				}
+			}
+		} while(lastMostRight != arc.GetMostRightPoint());
 	}
-	Arc arc(growsInTheRight, Point(col, row));
-
-
-
-
-
-
-
-
 	return arc;
 }
 
@@ -351,4 +452,16 @@ Mat FornaciariPratiDetector::findArcs(const Mat& src){
 		drawArc(result, *aIV, aIV_color);
 	}*/
 	return result;
+}
+
+
+bool FornaciariPratiDetector::isEdgePoint(const Point& point)
+{
+	uchar* volume = m_canny.ptr(point.y);
+	volume += point.x;
+	if (*volume == 255){
+		*volume = 0;
+		return true;
+	}
+	return false;
 }

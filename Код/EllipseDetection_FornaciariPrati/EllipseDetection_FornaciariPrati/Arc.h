@@ -9,13 +9,13 @@ using cv::Point;
 class Arc
 {
 public:
-	Arc(bool growsInTheRight, const Point& startPoint);
+	Arc(const Point& startPoint);
 	// TODO: add copy constructor with move semantic, will increase perfomance
-	void addToTheRight(const Point& point);
-	void addToTheLeft(const Point& point);
+	void AddToTheRight(const Point& point); // TODO: добавить move-семантику
+	void AddToTheLeft(const Point& point);
 	Point GetMostRightPoint() const;
 	Point GetMostLeftPoint() const;
-	bool IsGrowingInTheRight() const;
+	int Size() const;
 	void DrawArc(cv::Mat& canvas, uchar* color); // TODO: exclude it from Release version
 	// TODO: probably add method for interpolation (smoothing)
 private:
@@ -23,8 +23,6 @@ private:
 	// For the sake of perfomance we never check that these actually are most left and most right points
 	// Just be sure that you using correct function to add point in arc
 	Point m_mostRightPoint, m_mostLeftPoint;
-	// if true, this arc lies in II or IV quarter, if false - in I or III
-	const bool m_growsInTheRight;
 };
 
 inline Point Arc::GetMostRightPoint() const
@@ -37,9 +35,8 @@ inline Point Arc::GetMostLeftPoint() const
 	return m_mostLeftPoint;
 }
 
-inline bool Arc::IsGrowingInTheRight() const
+inline int Arc::Size() const
 {
-	return m_growsInTheRight;
+	return m_points.size();
 }
-
 typedef std::vector<Arc> Arcs;
