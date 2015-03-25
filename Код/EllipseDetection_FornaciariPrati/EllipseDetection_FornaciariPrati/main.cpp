@@ -44,104 +44,12 @@ Point findCenterIVandI(int arcIV, int arcI, bool &errorFlag);
 
 int main(){
 	src = ourImread(string("C:\\Диплом\\Images\\roadsign1.jpg"), CV_LOAD_IMAGE_GRAYSCALE);
-	EllipseDetector* detector = new FornaciariPratiDetector();
-	detector->DetailedEllipseDetection(src);
+	EllipseDetector* detector = new FornaciariPratiDetector(4, 0.2);
+	detector->DetectEllipses(src);
 
-
-
-
-
-	//namedWindow("Source image", CV_WINDOW_AUTOSIZE);
-	//imshow("Source image", src);
-
-	/*Ellipse elps1(cvPoint(100, 50), 45, cvSize(60, 39));
-	elps1.DrawOnImage(src, cvScalar(48), 2);
-	imshow("Source image", src);*/
-
-	/*Mat arcs_picture = findArcs(src);
-	namedWindow("Arcs", CV_WINDOW_AUTOSIZE);
-	imshow("Arcs", arcs_picture);*/
-
-	/*choosePossibleTriplets();
-
-	Mat paralleltsTestPicture = parallelsTest();
-	namedWindow("Parallels test", CV_WINDOW_AUTOSIZE);
-	imshow("Parallels test", paralleltsTestPicture);
-	*/
-	
 	return 0;
 }
 /*
-void drawArc(Mat& canvas, const list<Point>& arc, uchar* color){
-	for(auto i = arc.begin(); i != arc.end(); i++){
-		canvas.at<cv::Vec3b>(*i)[0] = color[0];
-		canvas.at<cv::Vec3b>(*i)[1] = color[1];
-		canvas.at<cv::Vec3b>(*i)[2] = color[2];
-	}
-}
-
-void choosePossibleTriplets(){
-	// сначала выбираем совместные пары
-	vector<Point> possibleIandII, possibleIIandIII, possibleIIIandIV, possibleIVandI;
-	for(int aI = 0; aI < arcs[0].size(); aI++){ 
-		for(int aII = 0; aII < arcs[1].size(); aII++){
-			if(arcs[1][aII].front().x <= arcs[0][aI].back().x) // aI должна быть правее aII
-				possibleIandII.push_back(Point(aI, aII));
-		}
-	}
-	for(int aII = 0; aII < arcs[1].size(); aII++){
-		for(int aIII = 0; aIII < arcs[2].size(); aIII++){
-			if(arcs[2][aIII].back().y >= arcs[1][aII].back().y) // aIII должна быть под aII
-				possibleIIandIII.push_back(Point(aII, aIII));
-		}
-	}
-
-	for(int aIII = 0; aIII < arcs[2].size(); aIII++){ 
-		for(int aIV = 0; aIV < arcs[3].size(); aIV++){
-			if(arcs[2][aIII].front().x <= arcs[3][aIV].back().x) // aIII должна быть левее aIV
-				possibleIIIandIV.push_back(Point(aIII, aIV));
-		}
-	}
-	for(int aIV = 0; aIV < arcs[3].size(); aIV++){
-		for(int aI = 0; aI < arcs[0].size(); aI++){
-			if(arcs[3][aIV].front().y >= arcs[0][aI].front().y) // aIV должна быть ниже aI
-				possibleIVandI.push_back(Point(aIV, aI));
-		}
-	}
-	// теперь составляем возможные тройки
-	for(int i = 0; i < possibleIandII.size(); i++){
-		for(int j = 0; j < possibleIIandIII.size(); j++){
-			// если сегмент из arcs[1] у этих пар один и тот же, то это возможная тройка
-			if(possibleIandII[i].y == possibleIIandIII[j].x)
-				possibleTriplets.push_back(PossibleTriplet(possibleIandII[i].x, possibleIandII[i].y, possibleIIandIII[j].y, -1));
-		}
-	}
-	for(int i = 0; i < possibleIIandIII.size(); i++){
-		for(int j = 0; j < possibleIIIandIV.size(); j++){
-			if(possibleIIandIII[i].y == possibleIIIandIV[j].x)
-				possibleTriplets.push_back(PossibleTriplet(-1, possibleIIandIII[i].x, possibleIIandIII[i].y, possibleIIIandIV[j].y));
-		}
-	}
-	for(int i = 0; i < possibleIIIandIV.size(); i++){
-		for(int j = 0; j < possibleIVandI.size(); j++){
-			if(possibleIIIandIV[i].y == possibleIVandI[j].x)
-				possibleTriplets.push_back(PossibleTriplet(possibleIVandI[j].y, -1, possibleIIIandIV[i].x, possibleIIIandIV[i].y));
-		}
-	}
-	for(int i = 0; i < possibleIVandI.size(); i++){
-		for(int j = 0; j < possibleIandII.size(); j++){
-			if(possibleIVandI[i].y == possibleIandII[j].x)
-				possibleTriplets.push_back(PossibleTriplet(possibleIandII[j].x, possibleIandII[j].y, -1, possibleIVandI[i].x));
-		}
-	}
-	std::cout << arcs[0].size() * arcs[1].size() * arcs[2].size() + 
-				 arcs[1].size() * arcs[2].size() * arcs[3].size() +
-				 arcs[2].size() * arcs[3].size() * arcs[0].size() + 
-				 arcs[3].size() * arcs[0].size() * arcs[1].size() 
-			  << std::endl;
-	std::cout << possibleTriplets.size() << std::endl;
-}
-
 void findMidPoints(){
 	// заранее ищем середины кривых и сохраняем их	
 	arcsMidPoints[0].reserve(arcs[0].size());	arcsMidPoints[1].reserve(arcs[1].size());

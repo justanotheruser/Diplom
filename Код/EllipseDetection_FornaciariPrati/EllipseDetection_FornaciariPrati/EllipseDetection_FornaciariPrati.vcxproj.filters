@@ -27,9 +27,6 @@
     <ClCompile Include="Stub.cpp">
       <Filter>Файлы исходного кода</Filter>
     </ClCompile>
-    <ClCompile Include="Arc.cpp">
-      <Filter>Файлы исходного кода</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Ellipse.h">
@@ -45,9 +42,6 @@
       <Filter>Заголовочные файлы</Filter>
     </ClInclude>
     <ClInclude Include="EllipseDetectionLibrary.h">
-      <Filter>Заголовочные файлы</Filter>
-    </ClInclude>
-    <ClInclude Include="Arc.h">
       <Filter>Заголовочные файлы</Filter>
     </ClInclude>
   </ItemGroup>

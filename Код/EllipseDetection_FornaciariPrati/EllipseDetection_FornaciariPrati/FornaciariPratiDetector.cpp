@@ -1,7 +1,7 @@
 #include "FornaciariPratiDetector.h"
 #include <list>
 #include "opencv2\highgui\highgui.hpp"
-#include "Arc.h"
+#include <iostream>
 
 using namespace cv;
 using std::string;
@@ -15,10 +15,34 @@ namespace
 		imshow(title, img);
 		if(wait) waitKey(0);
 	}
+
+	void drawArc(const Arc& arc, cv::Mat& canvas, uchar* color){
+		for(auto point : arc){
+			canvas.at<cv::Vec3b>(point)[0] = color[0];
+			canvas.at<cv::Vec3b>(point)[1] = color[1];
+			canvas.at<cv::Vec3b>(point)[2] = color[2];
+		}
+	}
+}
+
+FornaciariPratiDetector::FornaciariPratiDetector(string configFile)
+	: SIMILARITY_WITH_LINE_THRESHOLD(0), MINIMUM_ABOVE_UNDER_AREA_DIFFERENCE_RATIO(0)
+{
+}
+
+FornaciariPratiDetector::FornaciariPratiDetector(double similarityWithLineThreshold, double minimumAboveUnderAreaDifferenceRatio)
+	: SIMILARITY_WITH_LINE_THRESHOLD(similarityWithLineThreshold)
+	, MINIMUM_ABOVE_UNDER_AREA_DIFFERENCE_RATIO(minimumAboveUnderAreaDifferenceRatio)
+{
 }
 
 vector<Ellipse> FornaciariPratiDetector::DetectEllipses(const Mat& src)
 {
+	getSobelDerivatives(src);
+	useCannyDetector(); // TODO: реализовать детектор Кенни самому с переиспользованием посчитанных собелей
+	heuristicSearchOfArcs();
+	choosePossibleTriplets();
+	waitKey(0);
 	vector<Ellipse> ellipses;
 	return ellipses;
 }
@@ -33,7 +57,7 @@ vector<Ellipse> FornaciariPratiDetector::DetailedEllipseDetection(const Mat& src
 	Mat canny, sobelX, sobelY;
 
 	getSobelDerivatives(src);
-	// TODO: реализовать детектор Кенни самому с переиспользованием посчитанных собелей
+	
 	useCannyDetector();
 
 	// TODO: добавить альтернативный способ поиска арок:
@@ -70,398 +94,279 @@ void FornaciariPratiDetector::useCannyDetector()
 	int cannyLowTreshold = 50;
 	double cannyHighLowtRatio = 2.5;
 	Canny(m_blurred, m_canny, cannyLowTreshold, cannyLowTreshold * cannyHighLowtRatio);
-	//displayImage("Canny", m_canny);
+	displayImage("Canny", m_canny);
+}
+
+int FornaciariPratiDetector::calculateSquareUnderArc(const Arc& arc) const
+{
+	int underSquare = 0, bottomY = arc.back().y;
+	auto i = arc.begin();
+	int prev_x = i->x;
+	i++;
+	for(;i != arc.end(); i++)
+	{
+		if(i->x != prev_x) // если у кривой меняется только y, то избегаем считать один столбец дважды
+		{
+			underSquare += bottomY - i->y;
+			prev_x = i->x;
+		}
+	}
+	return underSquare;
 }
 
 void FornaciariPratiDetector::heuristicSearchOfArcs()
 {
-	Arcs arcsInCoordinateQuarters[4];
-	Arcs allArcs;
+	Mat result = Mat::zeros(m_canny.rows, m_canny.cols, CV_8UC3);
+	// выделяем память заранее, чтобы избежать копирования в рантайме
+	for (int i = 0; i < 4; i++)
+	{
+		m_arcsInCoordinateQuarters[i].clear();
+		m_arcsInCoordinateQuarters[i].reserve(50);
+	}
+
+	int reservedArcSize = m_canny.cols * m_canny.rows / 2 ;
 	for(int row = 0; row < m_canny.rows; row++)
 	{ 
 		uchar* p = m_canny.ptr(row);
-		short* sX = m_sobelX.ptr<short>(row);
+		short* sX = m_sobelX.ptr<short>(row); 
 		short* sY = m_sobelY.ptr<short>(row);
 		for(int col = 0; col < m_canny.cols; col++, p++, sX++, sY++) 
 		{
 			// start searching only from points with diagonal gradient
 			if(*p == 255 && *sX != 0 && *sY != 0)
 			{
-				Arc newArc = findArcThatIncludesPoint(col, row, sX, sY);
-				if (newArc.Size() <= 16) // отсекаем слишком маленькие дуги
-					continue;
-				allArcs.push_back(newArc);
+				Arc newArc;
+				newArc.reserve(reservedArcSize);
+				Point upperRight, bottomLeft; // границы бокса, внутри которого наша дуга
+				upperRight.y = row;
+				// определяем направление градиента
+				if(*sX > 0 && *sY > 0 || *sX < 0 && *sY < 0) // II или IV
+				{
+					findArcThatIncludesPoint(col, row, -1, newArc);
+					upperRight.x = col;
+					bottomLeft = newArc.back();
+					if (newArc.size() <= 16) // отсекаем слишком маленькие дуги
+						continue;
+					// отсекаем слишком вытянутые (смахивающие на вертикальные или горизонтальные прямые)
+					double width  = upperRight.x - bottomLeft.x;
+					double height = bottomLeft.y - upperRight.y;
+					if(width/height >= SIMILARITY_WITH_LINE_THRESHOLD || height/width >= SIMILARITY_WITH_LINE_THRESHOLD)
+						continue;
+					// если площадь под кривой отличается от площади над кривой меньше,
+					// чем на totalSquare * MINIMUM_ABOVE_UNDER_AREA_DIFFERENCE_RATIO, то отбрасываем эту кривую как 
+					// не выпуклую и не вогнутую (слишком похожую на прямую)
+					int totalSquare = width * height, underSquare = calculateSquareUnderArc(newArc);
+					int underMinusAbove = underSquare - (totalSquare - underSquare);
+					// выпуклая вверх кривая - II
+					if(underMinusAbove > MINIMUM_ABOVE_UNDER_AREA_DIFFERENCE_RATIO * totalSquare) 
+						m_arcsInCoordinateQuarters[1].push_back(newArc);
+					// вупыклая вниз кривая - IV
+					else if(underMinusAbove < - MINIMUM_ABOVE_UNDER_AREA_DIFFERENCE_RATIO * totalSquare) 
+						m_arcsInCoordinateQuarters[3].push_back(newArc);
+				}
+				else // I или III
+				{
+					findArcThatIncludesPoint(col, row, 1, newArc);
+					upperRight.x = newArc.back().x;
+					bottomLeft.x = col; bottomLeft.y = newArc.back().y;
+					if (newArc.size() <= 16) // отсекаем слишком маленькие дуги
+						continue;
+					// отсекаем слишком вытянутые (смахивающие на вертикальные или горизонтальные прямые)
+					double width  = upperRight.x - bottomLeft.x;
+					double height = bottomLeft.y - upperRight.y;
+					if(width/height >= SIMILARITY_WITH_LINE_THRESHOLD || height/width >= SIMILARITY_WITH_LINE_THRESHOLD)
+						continue;
+					// если площадь под кривой отличается от площади над кривой меньше,
+					// чем на totalSquare * MINIMUM_ABOVE_UNDER_AREA_DIFFERENCE_RATIO, то отбрасываем эту кривую как 
+					// не выпуклую и не вогнутую (слишком похожую на прямую)
+					int totalSquare = width * height, underSquare = calculateSquareUnderArc(newArc);
+					int underMinusAbove = underSquare - (totalSquare - underSquare);
+					// выпуклая вверх кривая - I 
+					if(underMinusAbove > MINIMUM_ABOVE_UNDER_AREA_DIFFERENCE_RATIO * totalSquare) 
+						m_arcsInCoordinateQuarters[0].push_back(newArc);
+					// вупыклая вниз кривая - III
+					else if(underMinusAbove < - MINIMUM_ABOVE_UNDER_AREA_DIFFERENCE_RATIO * totalSquare) 
+						m_arcsInCoordinateQuarters[2].push_back(newArc);
+				}
 			}
 		}
 	}
-
-	Mat result = Mat::zeros(m_canny.rows, m_canny.cols, CV_8UC3);
-	
-	for (auto arc : allArcs)
-	{
-		uchar arcColor[3] = {rand() % 255, rand() % 255, rand() % 255};
-		arc.DrawArc(result, arcColor);
-	}
-	displayImage("All arcs", result); 
+	uchar arcColor[4][3] = {{0, 0, 255}, {0, 255, 0}, {255, 0, 0}, {0, 255, 255}};
+	for(int i = 0; i < 4; i++)
+		for (auto arc : m_arcsInCoordinateQuarters[i])
+			drawArc(arc, result, arcColor[i]);
+	displayImage("All arcs", result);
 }
 
-Arc FornaciariPratiDetector::findArcThatIncludesPoint(int col, int row, short* sX, short* sY)
+void FornaciariPratiDetector::findArcThatIncludesPoint(int x, int y, int dx, Arc& arc)
 {
-	Arc arc(Point(col, row));
-	m_canny.at<uchar>(Point(col, row)) = 0;
-	Point newPoint, lastMostRight, lastMostLeft;
-	const int HORIZONTAL_LINE_THESHOLD = 20;
-	const int VERTICAL_LINE_THESHOLD = 20;
-	const int DIAGONAL_LINE_THESHOLD = 20;
-	int verticalLineCounter = 0, horizontalLineCounter = 0, diagonalLineCounter = 0;
-	// определяем направление градиента (отделяем II и IV от I и III)
-	if(*sX > 0 && *sY > 0 || *sX < 0 && *sY < 0)
+	arc.emplace_back(x, y);
+	m_canny.at<uchar>(Point(x, y)) = 0;
+	Point newPoint, lastPoint;
+	do // ищем новые точки дуги cбоку-по диагонали-снизу пока не перестанем находить
 	{
-		// ищем новые точки дуги слева пока не перестанем находить
-		do
+		newPoint = lastPoint = arc.back();
+		// если упёрлись в нижнюю границу, то у этой точки нет нижней и диагональной соседей
+		if (lastPoint.y + 1 <= m_canny.rows-1)
 		{
-			newPoint = lastMostLeft = arc.GetMostLeftPoint();
-			// если упёрлись в нижнюю границу, то у этой точки нет нижней и диагональной соседей
-			if (lastMostLeft.y + 1 <= m_canny.rows-1)
+			// строго вниз
+			newPoint = lastPoint + Point(0, 1);
+			if (isEdgePoint(newPoint))
 			{
-				// строго вниз
-				newPoint = lastMostLeft + Point(0, 1);
-				if (isEdgePoint(newPoint) && verticalLineCounter < VERTICAL_LINE_THESHOLD)
-				{
-					arc.AddToTheLeft(newPoint);
-					verticalLineCounter++;
-					diagonalLineCounter = horizontalLineCounter = 0;
-				}
-				else if (lastMostLeft.x - 1 >= 0)
-				{
-					// диагональная точка
-					newPoint = lastMostLeft + Point(-1, 1);
-					if (isEdgePoint(newPoint) && diagonalLineCounter < DIAGONAL_LINE_THESHOLD)
-					{
-						arc.AddToTheLeft(newPoint);
-						diagonalLineCounter++;
-						horizontalLineCounter = verticalLineCounter = 0;
-					}
-					else
-					{
-						// строго влево
-						newPoint = lastMostLeft + Point(-1, 0);
-						if (isEdgePoint(newPoint) && horizontalLineCounter < HORIZONTAL_LINE_THESHOLD)
-						{
-							arc.AddToTheLeft(newPoint);
-							horizontalLineCounter++;
-							diagonalLineCounter = verticalLineCounter = 0;
-						}
-					}
-				}
+				arc.push_back(newPoint);
+				m_canny.at<uchar>(newPoint) = 0;
 			}
-			else if (lastMostLeft.x - 1 >= 0)
+			else if (lastPoint.x - 1 >= 0)
 			{
-				// строго влево
-				newPoint = lastMostLeft + Point(-1, 0);
-				if (isEdgePoint(newPoint) && horizontalLineCounter < HORIZONTAL_LINE_THESHOLD)
+				// диагональная точка
+				newPoint = lastPoint + Point(dx, 1);
+				if (isEdgePoint(newPoint))
 				{
-					arc.AddToTheLeft(newPoint);
-					horizontalLineCounter++;
-					diagonalLineCounter = verticalLineCounter = 0;
-				}
-			}
-		} while(lastMostLeft != arc.GetMostLeftPoint());
-	}
-	else
-	{
-		do
-		{
-			newPoint = lastMostRight = arc.GetMostRightPoint();
-			// если упёрлись в нижнюю границу, то у этой точки нет нижней и диагональной соседей
-			if (lastMostRight.y + 1 <= m_canny.rows-1)
-			{
-				// строго вниз
-				newPoint = lastMostRight + Point(0, 1);
-				if (isEdgePoint(newPoint) && verticalLineCounter < VERTICAL_LINE_THESHOLD)
-				{
-					arc.AddToTheRight(newPoint);
-					verticalLineCounter++;
-					diagonalLineCounter = horizontalLineCounter = 0;
-
-				}
-				else if (lastMostRight.x + 1 <= m_canny.cols-1)
-				{
-					// диагональная точка
-					newPoint = lastMostRight + Point(1, 1);
-					if (isEdgePoint(newPoint) && diagonalLineCounter < DIAGONAL_LINE_THESHOLD)
-					{
-						arc.AddToTheRight(newPoint);
-						diagonalLineCounter++;
-						verticalLineCounter = horizontalLineCounter = 0;
-
-					}
-					else
-					{
-						// строго влево
-						newPoint = lastMostRight + Point(1, 0);
-						if (isEdgePoint(newPoint) && horizontalLineCounter < HORIZONTAL_LINE_THESHOLD)
-						{
-							arc.AddToTheRight(newPoint);
-							horizontalLineCounter++;
-							diagonalLineCounter = verticalLineCounter = 0;
-
-						}
-					}
-				}
-			}
-			else if (lastMostRight.x + 1 <= m_canny.cols-1)
-			{
-				// строго влево
-				newPoint = lastMostRight + Point(1, 0);
-				if (isEdgePoint(newPoint) && horizontalLineCounter < HORIZONTAL_LINE_THESHOLD)
-				{
-					arc.AddToTheRight(newPoint);
-					horizontalLineCounter++;
-					diagonalLineCounter = verticalLineCounter = 0;
-				}
-			}
-		} while(lastMostRight != arc.GetMostRightPoint());
-	}
-	return arc;
-}
-
-Mat FornaciariPratiDetector::findArcs(const Mat& src){
-	vector<list<Point>> arcs[4];
-	Mat result = Mat::zeros(m_canny.rows, m_canny.cols, CV_8UC3);
-
-	// используется в двух местах для отсекания кривых, смахивающих на линии
-	/*const int lineSimilarityThreshold = 20; // предельное число точек подряд, у которых одна из координат неизменна
-
-	for(int row = 0; row < canny.rows; row++){ 
-		uchar* p = canny.ptr(row);
-		short* sX = sobelX.ptr<short>(row);
-		short* sY = sobelY.ptr<short>(row);
-		for(int col = 0; col < canny.cols; col++, p++, sX++, sY++) {
-			if(*p == 255 && *sX != 0){
-				// определяем направление градиента (отделяем  II и IV от I и III)
-				int dx, dy; // смещения, прибавляемые к граничным точкам
-				int yBorder, sYsXSign;
-				if(*sY * *sX > 0){ // знак такой же, как и *sY / *sX, но умножение чуть быстрее
-					dx = 1; dy = -1; yBorder = 0; sYsXSign = 1;
-				}
-				else if(*sY * *sX < 0){
-					dx = 1; dy = 1; yBorder = canny.rows-1; sYsXSign = -1;
+					arc.push_back(newPoint);
+					m_canny.at<uchar>(newPoint) = 0;
 				}
 				else
-					continue;
-				list<Point> new_arc;
-				new_arc.push_front(Point(col, row));
-				canny.at<uchar>(Point(col, row)) = 0;	
-
-				// ищем все принадлежащие этой арке точки
-				int rightX, rightY, leftX, leftY;
-				int newRightX = col, newRightY = row;
-				// переменные для контроля за кривизной
-				int looksLikeVerticalLine = 0, looksLikeHorizontalLine = 0;
-				do{  // ищем точки кривой вправо от исходной
-					rightX = newRightX; rightY = newRightY;
-					uchar* h = canny.ptr(rightY + dy); // точка по диагонали
-					h += rightX + dx;
-					if(*h == 255){
-						short* new_sX = sobelX.ptr<short>(rightY + dy); // проверяем, что направление градиента в этой точке остаётся тем же
-						new_sX += rightX + dx;
-						short* new_sY = sobelY.ptr<short>(rightY + dy);
-						new_sY += rightX + dx;
-						if(sYsXSign * (*new_sY) * (*new_sX) > 0){ // знаки совпадают, всё хорошо
-							newRightY = rightY + dy;
-							newRightX = rightX + dx;
-							looksLikeVerticalLine = 0;	looksLikeHorizontalLine = 0;
-							new_arc.push_front(Point(newRightX, newRightY));
-							canny.at<uchar>(Point(newRightX, newRightY)) = 0;
-							continue;
-						}
+				{
+					// строго по горизонтали
+					newPoint = lastPoint + Point(dx, 0);
+					if (isEdgePoint(newPoint))
+					{
+						arc.push_back(newPoint);
+						m_canny.at<uchar>(newPoint) = 0;
 					}
-					h = canny.ptr(rightY + dy); // изменился только y
-					h += rightX;
-					if(*h == 255){
-						// проверяем, как давно менялся x
-						looksLikeVerticalLine++;
-						// если слишком давно, то наша кривая постепенно превращается в вертикальную прямую и нужно оборвать её
-						// если нет, то продолжаем
-						if(looksLikeVerticalLine < lineSimilarityThreshold){
-							short* new_sX = sobelX.ptr<short>(rightY + dy); // проверяем, что направление градиента в этой точке остаётся тем же
-							new_sX += rightX;
-							short* new_sY = sobelY.ptr<short>(rightY + dy);
-							new_sY += rightX;
-							if(sYsXSign * (*new_sY) * (*new_sX) > 0){
-								newRightY = rightY + dy;
-								looksLikeHorizontalLine = 0;
-								new_arc.push_front(Point(newRightX, newRightY));
-								canny.at<uchar>(Point(newRightX, newRightY)) = 0;
-								continue;
-							}
-						}
-					}
-					h = canny.ptr(rightY); // изменился только х
-					h += rightX + dx;
-					if(*h == 255){
-						// проверяем, как давно менялся y
-						looksLikeHorizontalLine++;
-						if(looksLikeHorizontalLine < lineSimilarityThreshold){
-							short* new_sX = sobelX.ptr<short>(rightY); // проверяем, что направление градиента в этой точке остаётся тем же
-							new_sX += rightX + dx;
-							short* new_sY = sobelY.ptr<short>(rightY);
-							new_sY += rightX + dx;
-							if(sYsXSign * (*new_sY) * (*new_sX) > 0){
-								newRightX = rightX + dx;
-								looksLikeVerticalLine = 0;
-								new_arc.push_front(Point(newRightX, newRightY));
-								canny.at<uchar>(Point(newRightX, newRightY)) = 0;
-								continue;
-							}
-						}
-					}
-				// выполняем пока верхняя/правая граница не перестанет меняться или не упрёмся в край изображения
-				}while(!(newRightX==rightX && newRightY==rightY) && newRightX != canny.cols-1 && newRightY != yBorder);
-
-				yBorder = yBorder==0 ? canny.rows - 1 : 0;
-				int newLeftX = col, newLeftY = row;
-				looksLikeVerticalLine = 0; looksLikeHorizontalLine = 0;
-				do{
-					leftX = newLeftX; leftY = newLeftY;
-					uchar* l = canny.ptr(leftY - dy); // точка по диагонали
-					l += leftX - dx;
-					if(*l == 255){
-						short* new_sX = sobelX.ptr<short>(leftY - dy); // проверяем, что направление градиента в этой точке остаётся тем же
-						new_sX += leftX - dx;
-						short* new_sY = sobelY.ptr<short>(leftY - dy);
-						new_sY += leftX - dx;
-						if(sYsXSign * (*new_sY) * (*new_sX) > 0){ // знаки совпадают, всё хорошо
-							newLeftX = leftX - dx;
-							newLeftY = leftY - dy;
-							looksLikeVerticalLine = 0;	looksLikeHorizontalLine = 0;
-							new_arc.push_back(Point(newLeftX, newLeftY));
-							canny.at<uchar>(Point(newLeftX, newLeftY)) = 0;
-							continue;
-						}
-					}
-					l = canny.ptr(leftY - dy); // изменился только y
-					l += leftX;
-					if(*l == 255){
-						// проверяем, как давно менялся x
-						looksLikeVerticalLine++;
-						if(looksLikeVerticalLine < lineSimilarityThreshold){
-							short* new_sX = sobelX.ptr<short>(leftY - dy); // проверяем, что направление градиента в этой точке остаётся тем же
-							new_sX += leftX;
-							short* new_sY = sobelY.ptr<short>(leftY - dy);
-							new_sY += leftX;
-							if(sYsXSign * (*new_sY) * (*new_sX) > 0){
-								newLeftY = leftY - dy;
-								looksLikeHorizontalLine = 0;
-								new_arc.push_back(Point(newLeftX, newLeftY));
-								canny.at<uchar>(Point(newLeftX, newLeftY)) = 0;
-								continue;
-							}
-						}
-					}
-
-
-					l = canny.ptr(leftY); // изменился только х
-					l += leftX - dx;
-					if(*l == 255){
-						// проверяем, как давно менялся y
-						looksLikeHorizontalLine++;
-						if(looksLikeHorizontalLine < lineSimilarityThreshold){
-							short* new_sX = sobelX.ptr<short>(leftY); // проверяем, что направление градиента в этой точке остаётся тем же
-							new_sX += leftX - dx;
-							short* new_sY = sobelY.ptr<short>(leftY);
-							new_sY += leftX - dx;
-							if(sYsXSign * (*new_sY) * (*new_sX) > 0){
-								newLeftX = leftX - dx;
-								looksLikeVerticalLine = 0;
-								new_arc.push_back(Point(newLeftX, newLeftY));
-								canny.at<uchar>(Point(newLeftX, newLeftY)) = 0;
-								continue;
-							}
-						}
-					}
-				// выполняем пока нижняя/левая граница не перестанет меняться или не упрёмся в край изображения
-				}while(!(newLeftX==leftX && newLeftY==leftY) && newLeftX != 0 && newLeftY != yBorder);
-					
-				// отсекаем слишком короткие дуги
-				if(new_arc.size() <= 16)
-					continue;
-				// отсекаем слишком вытянутые (смахивающие на вертикальные или горизонтальные прямые)
-				double width = rightX - leftX;
-				double height = abs(rightY - leftY);
-				if(width/height >= lineSimilarityThreshold || height/width >= lineSimilarityThreshold)
-					continue;
-
-				// если площадь под кривой отличается от площади над кривой меньше,
-				// чем на eps * totalSquare, то отбрасываем эту кривую как не выпуклую и не вогнутую
-				// (слишком похожую на прямую)
-				double eps = 0.1;
-				if(rightY > leftY){ // I или III четверть
-					// считаем площади под и над кривой
-					int underSquare = 0, totalSquare = abs((rightX - leftX) * (rightY - leftY));
-					auto i = new_arc.begin();
-					int prev_x = i->x;
-					i++;
-					for(;i != new_arc.end(); i++){
-						if(i->x != prev_x){ // если у кривой меняется только y, то избегаем считать один столбец дважды
-							underSquare += rightY - i->y;
-							prev_x = i->x;
-						}
-					}
-					if(underSquare - (totalSquare - underSquare) > eps*totalSquare) // выпуклая вверх кривая - I 
-						arcs[0].push_back(new_arc);
-					else if(underSquare - (totalSquare - underSquare) < -eps*totalSquare)  // вупыклая вниз кривая - III
-						arcs[2].push_back(new_arc);
-
-				}
-				else{ // II или IV 
-					int underSquare = 0, totalSquare = abs((rightX - leftX) * (leftY - rightY));
-					auto i = new_arc.begin();
-					int prev_x = i->x;
-					i++;
-					for(;i != new_arc.end(); i++){
-						if(i->x != prev_x){ // если у кривой меняется только y, то избегаем считать один столбец дважды
-							underSquare += leftY - i->y;
-							prev_x = i->x;
-						}
-					}
-					if(underSquare - (totalSquare - underSquare) > eps*totalSquare) // выпуклая вверх кривая - II
-						arcs[1].push_back(new_arc);
-					else if(underSquare - (totalSquare - underSquare) < -eps*totalSquare) // вупыклая вниз кривая - IV
-						arcs[3].push_back(new_arc);
 				}
 			}
 		}
-    }
-
-	uchar aI_color[3] = {0, 0, 255};
-	uchar aII_color[3] = {0, 255, 0};
-	uchar aIII_color[3] = {255, 0, 0};
-	uchar aIV_color[3] = {0, 255, 255};
-	for(auto aI = arcs[0].begin(); aI != arcs[0].end(); aI++){
-		drawArc(result, *aI, aI_color);
-	}
-	for(auto aII = arcs[1].begin(); aII != arcs[1].end(); aII++){
-		drawArc(result, *aII, aII_color);
-	}
-	for(auto aIII = arcs[2].begin(); aIII != arcs[2].end(); aIII++){
-		drawArc(result, *aIII, aIII_color);
-	}
-	for(auto aIV = arcs[3].begin(); aIV != arcs[3].end(); aIV++){
-		drawArc(result, *aIV, aIV_color);
-	}*/
-	return result;
+		else if (lastPoint.x - 1 >= 0)
+		{
+			// строго по горизонтали
+			newPoint = lastPoint + Point(dx, 0);
+			if (isEdgePoint(newPoint))
+			{
+				arc.push_back(newPoint);
+				m_canny.at<uchar>(newPoint) = 0;
+			}
+		}
+	} while(lastPoint != arc.back());
 }
 
+void FornaciariPratiDetector::choosePossibleTriplets(){
+	// запоминаем, т.к. накладно вызывать функции в цикле на проверке условия
+	int numArcsI = m_arcsInCoordinateQuarters[0].size();
+	int numArcsII = m_arcsInCoordinateQuarters[1].size();
+	int numArcsIII = m_arcsInCoordinateQuarters[2].size();
+	int numArcsIV = m_arcsInCoordinateQuarters[3].size();
+	// выделяем память заранее, чтобы избежать копирования в рантайме
+	for (int i = 0; i < 4; i++)
+	{
+		m_possibleIandII.clear();   m_possibleIandII.reserve(numArcsI*numArcsII);
+		m_possibleIIandIII.clear(); m_possibleIIandIII.reserve(numArcsII*numArcsIII);
+		m_possibleIIIandIV.clear();	m_possibleIIIandIV.reserve(numArcsIII*numArcsIV);
+		m_possibleIVandI.clear();   m_possibleIVandI.reserve(numArcsIV*numArcsI);
+	}
+	// сначала выбираем совместные пары
+	for(int aI = 0; aI < numArcsI; aI++){ 
+		for(int aII = 0; aII < numArcsII; aII++){
+			if(m_arcsInCoordinateQuarters[1][aII].front().x <= m_arcsInCoordinateQuarters[0][aI].back().x) // aI должна быть правее aII
+				m_possibleIandII.emplace_back(aI, aII);
+		}
+	}
+	for(int aII = 0; aII < numArcsII; aII++){
+		for(int aIII = 0; aIII < numArcsIII; aIII++){
+			if(m_arcsInCoordinateQuarters[2][aIII].back().y >= m_arcsInCoordinateQuarters[1][aII].back().y) // aIII должна быть под aII
+				m_possibleIIandIII.emplace_back(aII, aIII);
+		}
+	}
+	for(int aIII = 0; aIII < numArcsIII; aIII++){ 
+		for(int aIV = 0; aIV < numArcsIV; aIV++){
+			if(m_arcsInCoordinateQuarters[2][aIII].front().x <= m_arcsInCoordinateQuarters[3][aIV].back().x) // aIII должна быть левее aIV
+				m_possibleIIIandIV.emplace_back(aIII, aIV);
+		}
+	}
+	for(int aIV = 0; aIV < numArcsIV; aIV++){
+		for(int aI = 0; aI < m_arcsInCoordinateQuarters[0].size(); aI++){
+			if(m_arcsInCoordinateQuarters[3][aIV].front().y >= m_arcsInCoordinateQuarters[0][aI].front().y) // aIV должна быть ниже aI
+				m_possibleIVandI.emplace_back(aIV, aI);
+		}
+	}
 
-bool FornaciariPratiDetector::isEdgePoint(const Point& point)
+	// теперь составляем возможные тройки
+	int numOfPairsIandII   = m_possibleIandII.size();
+	int numOfPairsIIandIII = m_possibleIIandIII.size();
+	int numOfPairsIIIandIV = m_possibleIIIandIV.size();
+	int numOfPairsIVandI   = m_possibleIVandI.size();
+	for (int i = 0; i < 4; i++)
+	{
+		m_tripletsWithout_I.clear();   m_tripletsWithout_I.reserve(m_possibleIIandIII.size() * m_possibleIIIandIV.size());
+		m_tripletsWithout_II.clear();  m_tripletsWithout_I.reserve(m_possibleIIIandIV.size() * m_possibleIVandI.size());
+		m_tripletsWithout_III.clear(); m_tripletsWithout_I.reserve(m_possibleIandII.size() * m_possibleIVandI.size());
+		m_tripletsWithout_IV.clear();  m_tripletsWithout_I.reserve(m_possibleIandII.size() * m_possibleIIandIII.size());
+	}
+	for(int i = 0; i < numOfPairsIandII; i++)
+	{
+		for(int j = 0; j < numOfPairsIIandIII; j++)
+		{
+			// если сегмент из второй четверти у этих пар один и тот же, то это возможная тройка
+			if(m_possibleIandII[i].second == m_possibleIIandIII[j].first)
+				m_tripletsWithout_IV.emplace_back(m_possibleIandII[i].first, m_possibleIandII[i].second, m_possibleIIandIII[j].second);
+		}
+		for(int j = 0; j < numOfPairsIVandI; j++)
+		{
+			// если сегмент из первой четверти у этих пар один и тот же, то это возможная тройка
+			if(m_possibleIandII[i].first == m_possibleIVandI[j].second)
+				m_tripletsWithout_III.emplace_back(m_possibleIandII[i].first, m_possibleIandII[i].second, m_possibleIVandI[j].first);
+		}
+	}
+	for(int i = 0; i < numOfPairsIIIandIV; i++)
+	{
+		for(int j = 0; j < numOfPairsIVandI; j++)
+		{
+			// если сегмент из четвёртой четверти у этих пар один и тот же, то это возможная тройка
+			if(m_possibleIIIandIV[i].second == m_possibleIVandI[j].first)
+				m_tripletsWithout_II.emplace_back(m_possibleIVandI[i].second, m_possibleIIIandIV[i].first, m_possibleIIIandIV[j].second);
+		}
+		for(int j = 0; j < numOfPairsIIandIII; j++)
+		{
+			// если сегмент из третьей четверти у этих пар один и тот же, то это возможная тройка
+			if(m_possibleIIIandIV[i].first == m_possibleIIandIII[j].second)
+				m_tripletsWithout_I.emplace_back(m_possibleIandII[i].first, m_possibleIandII[i].second, m_possibleIVandI[j].first);
+		}
+	}	
+
+	// without optimization
+	std::cout << m_arcsInCoordinateQuarters[0].size() * m_arcsInCoordinateQuarters[1].size() * m_arcsInCoordinateQuarters[2].size() + 
+				 m_arcsInCoordinateQuarters[1].size() * m_arcsInCoordinateQuarters[2].size() * m_arcsInCoordinateQuarters[3].size() +
+				 m_arcsInCoordinateQuarters[2].size() * m_arcsInCoordinateQuarters[3].size() * m_arcsInCoordinateQuarters[0].size() + 
+				 m_arcsInCoordinateQuarters[3].size() * m_arcsInCoordinateQuarters[0].size() * m_arcsInCoordinateQuarters[1].size() 
+			  << std::endl;
+	std::cout << m_tripletsWithout_I.size() + m_tripletsWithout_II.size() + 
+				 m_tripletsWithout_III.size() + m_tripletsWithout_IV.size() << std::endl;
+}
+
+inline bool FornaciariPratiDetector::isEdgePoint(const Point& point)
 {
 	uchar* volume = m_canny.ptr(point.y);
 	volume += point.x;
-	if (*volume == 255){
-		*volume = 0;
-		return true;
-	}
-	return false;
+	return *volume == 255;
+}
+
+
+// TODO: подумать над тем, чтобы отслеживать среднюю точку ещё на этапе построения дуги
+void FornaciariPratiDetector::findMidPoints(){
+/*	m_arcsMidPoints[0].reserve(m_arcsInCoordinateQuarters[0].size());
+	m_arcsMidPoints[1].reserve(m_arcsInCoordinateQuarters[1].size());
+	m_arcsMidPoints[2].reserve(m_arcsInCoordinateQuarters[2].size());
+	m_arcsMidPoints[3].reserve(m_arcsInCoordinateQuarters[3].size());
+	for(int arcType = 0; arcType < 4; arcType++){ // цикл по типам кривых
+		for (int i = 0; i < m_arcsInCoordinateQuarters[arcType].size(); i++){ // цикл по кривым одного типа
+			int index = 0;
+			int middle_index = m_arcsInCoordinateQuarters[arcType][i].size() / 2;
+			for(auto point = arcs[arcType][i].rbegin(); point != arcs[arcType][i].rend(); point++, number++){ // цикл по точкам кривой
+				if(index == middle_index){
+					arcsMidPoints[arcType].push_back(point);
+					break;
+				}
+			}
+		}
+	}*/
 }

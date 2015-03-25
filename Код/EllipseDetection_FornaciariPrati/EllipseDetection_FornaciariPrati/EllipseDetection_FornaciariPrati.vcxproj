@@ -62,27 +62,26 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
-      <Optimization>MaxSpeed</Optimization>
+      <Optimization>Full</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>false</SDLCheck>
+      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
     </ClCompile>
     <Link>
-      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <GenerateDebugInformation>false</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <AdditionalDependencies>opencv_calib3d$(OPENCV_VER).lib;opencv_contrib$(OPENCV_VER).lib;opencv_core$(OPENCV_VER).lib;opencv_features2d$(OPENCV_VER).lib;opencv_flann$(OPENCV_VER).lib;opencv_gpu$(OPENCV_VER).lib;opencv_highgui$(OPENCV_VER).lib;opencv_imgproc$(OPENCV_VER).lib;opencv_legacy$(OPENCV_VER).lib;opencv_ml$(OPENCV_VER).lib;opencv_nonfree$(OPENCV_VER).lib;opencv_objdetect$(OPENCV_VER).lib;opencv_photo$(OPENCV_VER).lib;opencv_stitching$(OPENCV_VER).lib;opencv_superres$(OPENCV_VER).lib;opencv_ts$(OPENCV_VER).lib;opencv_video$(OPENCV_VER).lib;opencv_videostab$(OPENCV_VER).lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="Arc.cpp" />
     <ClCompile Include="Ellipse.cpp" />
     <ClCompile Include="FornaciariPratiDetector.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="Stub.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Arc.h" />
     <ClInclude Include="Ellipse.h" />
     <ClInclude Include="EllipseDetectionLibrary.h" />
     <ClInclude Include="EllipseDetector.h" />
