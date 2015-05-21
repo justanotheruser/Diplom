@@ -43,30 +43,13 @@ Point findCenterIIIandIV(int arcIII, int arcI, bool &errorFlag);
 Point findCenterIVandI(int arcIV, int arcI, bool &errorFlag);
 
 int main(){
-	src = ourImread(string("C:\\Диплом\\Images\\roadsign1.jpg"), CV_LOAD_IMAGE_GRAYSCALE);
+	src = ourImread(string("C:\\Диплом\\Images\\тестовый эллипс.bmp"), CV_LOAD_IMAGE_GRAYSCALE);
 	EllipseDetector* detector = new FornaciariPratiDetector(4, 0.2);
 	detector->DetectEllipses(src);
 
 	return 0;
 }
 /*
-void findMidPoints(){
-	// заранее ищем середины кривых и сохраняем их	
-	arcsMidPoints[0].reserve(arcs[0].size());	arcsMidPoints[1].reserve(arcs[1].size());
-	arcsMidPoints[2].reserve(arcs[2].size());	arcsMidPoints[3].reserve(arcs[3].size());
-	for(int arcType = 0; arcType < 4; arcType++){ // цикл по типам кривых
-		for (int i = 0; i < arcs[arcType].size(); i++){ // цикл по кривым одного типа
-			int number = 0, middle_number = arcs[arcType][i].size() / 2;
-			for(auto point = arcs[arcType][i].rbegin(); point != arcs[arcType][i].rend(); point++, number++){ // цикл по точкам кривой
-				if(number == middle_number){
-					arcsMidPoints[arcType].push_back(point);
-					break;
-				}
-			}
-		}
-	}
-}
-
 Mat parallelsTest(){
 	const double thresholdCenterDiff = 5;
 	findMidPoints(); // заранее ищем середины кривых для ускорения
@@ -217,6 +200,7 @@ Point findCenterIandII(int arcI, int arcII, bool &errorFlag){
 	}
 	return center;
 }
+/*
 Point findCenterIIandIII(int arcII, int arcIII, bool &errorFlag){
 	Point center;
 	list<Point>::iterator edgeII = arcs[1][arcII].begin(); // верхняя правая точка

@@ -1,38 +1,90 @@
 #include "FornaciariPratiDetector.h"
-#include <list>
 #include "opencv2\highgui\highgui.hpp"
-#include <iostream>
 
 using namespace cv;
 using std::string;
 using std::list;
 
-namespace
+void displayImage(const char* title, const Mat& img, bool wait=false)
 {
-	void displayImage(const char* title, const Mat& img, bool wait=false)
-	{
-		namedWindow(title, CV_WINDOW_AUTOSIZE);
-		imshow(title, img);
-		if(wait) waitKey(0);
-	}
+	namedWindow(title, CV_WINDOW_AUTOSIZE);
+	imshow(title, img);
+	//imwrite("../.."+std::string(title)+".jpg", img);
+	if(wait) waitKey(0);
+}
 
-	void drawArc(const Arc& arc, cv::Mat& canvas, uchar* color){
+void drawArc(const Arc& arc, cv::Mat& canvas, uchar* color){
 		for(auto point : arc){
 			canvas.at<cv::Vec3b>(point)[0] = color[0];
 			canvas.at<cv::Vec3b>(point)[1] = color[1];
 			canvas.at<cv::Vec3b>(point)[2] = color[2];
 		}
 	}
+
+bool curvatureCondition(const Arc& firstArc, const Arc& secondArc)
+{
+	Point firstMidPoint = firstArc[firstArc.size()/2];
+	Point secondMidPoint = secondArc[secondArc.size()/2];
+	Point firstC = firstArc.back() + firstArc.front();
+	firstC.x /= 2;
+	firstC.y /= 2;
+	Point secondC = secondArc.back() + secondArc.front();
+	secondC.x /= 2;
+	secondC.y /= 2;
+	double midPointsDist = cv::norm(firstMidPoint-secondMidPoint);
+	if (midPointsDist > cv::norm(firstC-secondMidPoint) && 
+		midPointsDist > cv::norm(secondC-firstMidPoint))
+		return true;
+	return false;
 }
+
+void findCenterIandII(const Arc& arcI, const Arc& arcII)
+{
+
+}
+
+double getSlope(std::vector<Point> midPoints, bool& errorFlag)
+{
+	int middle = midPoints.size() / 2;
+	if (middle == 0)
+	{
+		errorFlag = true;
+		return 0;
+	}
+	errorFlag = false;
+	double S = 0;
+	for (int i = 0; i < middle; i++)
+	{
+		int x1 = midPoints[i].x;
+		int y1 = midPoints[i].y;
+		int x2 = midPoints[middle + i].x;
+		int y2 = midPoints[middle + i].y;
+		double slope;
+		if (y2 - y1 == 0)
+			slope = INT_MAX;
+		else
+			slope = (x2 - x1) / (y2 - y1);
+		S += slope;
+	}
+	return S/middle;
+}
+
 
 FornaciariPratiDetector::FornaciariPratiDetector(string configFile)
 	: SIMILARITY_WITH_LINE_THRESHOLD(0), MINIMUM_ABOVE_UNDER_AREA_DIFFERENCE_RATIO(0)
 {
 }
 
-FornaciariPratiDetector::FornaciariPratiDetector(double similarityWithLineThreshold, double minimumAboveUnderAreaDifferenceRatio)
+FornaciariPratiDetector::FornaciariPratiDetector(double similarityWithLineThreshold, 
+												 double minimumAboveUnderAreaDifferenceRatio,
+												 int blurKernelSize, int blurSigma, int sobelKernelSize)
+
 	: SIMILARITY_WITH_LINE_THRESHOLD(similarityWithLineThreshold)
 	, MINIMUM_ABOVE_UNDER_AREA_DIFFERENCE_RATIO(minimumAboveUnderAreaDifferenceRatio)
+	, m_blurKernelSize(blurKernelSize)
+	, m_blurSigma(blurSigma)
+	, m_sobelKernelSize(sobelKernelSize)
+
 {
 }
 
@@ -77,16 +129,16 @@ vector<Ellipse> FornaciariPratiDetector::DetailedEllipseDetection(const Mat& src
 
 void FornaciariPratiDetector::getSobelDerivatives(const Mat& src)
 {
-	int blurKernelSize = 3, sobelKernelSize = 3;
-	double blurSigma = 1;
-	GaussianBlur(src, m_blurred, Size(blurKernelSize, blurKernelSize), blurSigma, blurSigma);
-	Sobel(m_blurred, m_sobelX, CV_16S, 1, 0, sobelKernelSize);
-	Sobel(m_blurred, m_sobelY, CV_16S, 0, 1, sobelKernelSize);
+	GaussianBlur(src, m_blurred, Size(m_blurKernelSize, m_blurKernelSize), m_blurSigma, m_blurSigma);
+	Sobel(m_blurred, m_sobelX, CV_16S, 1, 0, m_sobelKernelSize);
+	Sobel(m_blurred, m_sobelY, CV_16S, 0, 1, m_sobelKernelSize);
+#ifdef _DEBUG 
 	Mat cv_8u_sobelX, cv_8u_sobelY;
 	convertScaleAbs(m_sobelX, cv_8u_sobelX);
 	convertScaleAbs(m_sobelY, cv_8u_sobelY);
-	//displayImage("SobelX", cv_8u_sobelX);
-	//displayImage("SobelY", cv_8u_sobelY);
+	displayImage("SobelX", cv_8u_sobelX);
+	displayImage("SobelY", cv_8u_sobelY);
+#endif
 }
 
 void FornaciariPratiDetector::useCannyDetector()
@@ -94,29 +146,13 @@ void FornaciariPratiDetector::useCannyDetector()
 	int cannyLowTreshold = 50;
 	double cannyHighLowtRatio = 2.5;
 	Canny(m_blurred, m_canny, cannyLowTreshold, cannyLowTreshold * cannyHighLowtRatio);
+#ifdef _DEBUG
 	displayImage("Canny", m_canny);
-}
-
-int FornaciariPratiDetector::calculateSquareUnderArc(const Arc& arc) const
-{
-	int underSquare = 0, bottomY = arc.back().y;
-	auto i = arc.begin();
-	int prev_x = i->x;
-	i++;
-	for(;i != arc.end(); i++)
-	{
-		if(i->x != prev_x) // если у кривой меняется только y, то избегаем считать один столбец дважды
-		{
-			underSquare += bottomY - i->y;
-			prev_x = i->x;
-		}
-	}
-	return underSquare;
+#endif
 }
 
 void FornaciariPratiDetector::heuristicSearchOfArcs()
 {
-	Mat result = Mat::zeros(m_canny.rows, m_canny.cols, CV_8UC3);
 	// выделяем память заранее, чтобы избежать копирования в рантайме
 	for (int i = 0; i < 4; i++)
 	{
@@ -124,7 +160,7 @@ void FornaciariPratiDetector::heuristicSearchOfArcs()
 		m_arcsInCoordinateQuarters[i].reserve(50);
 	}
 
-	int reservedArcSize = m_canny.cols * m_canny.rows / 2 ;
+	int reservedArcSize = m_canny.cols * m_canny.rows / 2;
 	for(int row = 0; row < m_canny.rows; row++)
 	{ 
 		uchar* p = m_canny.ptr(row);
@@ -191,15 +227,22 @@ void FornaciariPratiDetector::heuristicSearchOfArcs()
 			}
 		}
 	}
+#ifdef _DEBUG
+	Mat result = Mat::zeros(m_canny.rows, m_canny.cols, CV_8UC3);
 	uchar arcColor[4][3] = {{0, 0, 255}, {0, 255, 0}, {255, 0, 0}, {0, 255, 255}};
 	for(int i = 0; i < 4; i++)
 		for (auto arc : m_arcsInCoordinateQuarters[i])
 			drawArc(arc, result, arcColor[i]);
 	displayImage("All arcs", result);
+#endif
 }
 
 void FornaciariPratiDetector::findArcThatIncludesPoint(int x, int y, int dx, Arc& arc)
 {
+	const int VERTICAL_LINE_THRESHOLD = 20;
+	const int HORIZONTAL_LINE_THRESHOLD = 20;
+	int looksLikeHorizontalLine = 0, looksLikeVerticalLine = 0;
+
 	arc.emplace_back(x, y);
 	m_canny.at<uchar>(Point(x, y)) = 0;
 	Point newPoint, lastPoint;
@@ -212,28 +255,19 @@ void FornaciariPratiDetector::findArcThatIncludesPoint(int x, int y, int dx, Arc
 			// строго вниз
 			newPoint = lastPoint + Point(0, 1);
 			if (isEdgePoint(newPoint))
-			{
 				arc.push_back(newPoint);
-				m_canny.at<uchar>(newPoint) = 0;
-			}
 			else if (lastPoint.x - 1 >= 0)
 			{
 				// диагональная точка
 				newPoint = lastPoint + Point(dx, 1);
 				if (isEdgePoint(newPoint))
-				{
 					arc.push_back(newPoint);
-					m_canny.at<uchar>(newPoint) = 0;
-				}
 				else
 				{
-					// строго по горизонтали
+					// строго по горизонтали 
 					newPoint = lastPoint + Point(dx, 0);
 					if (isEdgePoint(newPoint))
-					{
 						arc.push_back(newPoint);
-						m_canny.at<uchar>(newPoint) = 0;
-					}
 				}
 			}
 		}
@@ -242,12 +276,26 @@ void FornaciariPratiDetector::findArcThatIncludesPoint(int x, int y, int dx, Arc
 			// строго по горизонтали
 			newPoint = lastPoint + Point(dx, 0);
 			if (isEdgePoint(newPoint))
-			{
 				arc.push_back(newPoint);
-				m_canny.at<uchar>(newPoint) = 0;
-			}
 		}
 	} while(lastPoint != arc.back());
+}
+
+int FornaciariPratiDetector::calculateSquareUnderArc(const Arc& arc) const
+{
+	int underSquare = 0, bottomY = arc.back().y;
+	auto i = arc.begin();
+	int prev_x = i->x;
+	i++;
+	for(;i != arc.end(); i++)
+	{
+		if(i->x != prev_x) // если у кривой меняется только y, то избегаем считать один столбец дважды
+		{
+			underSquare += bottomY - i->y;
+			prev_x = i->x;
+		}
+	}
+	return underSquare;
 }
 
 void FornaciariPratiDetector::choosePossibleTriplets(){
@@ -265,30 +313,90 @@ void FornaciariPratiDetector::choosePossibleTriplets(){
 		m_possibleIVandI.clear();   m_possibleIVandI.reserve(numArcsIV*numArcsI);
 	}
 	// сначала выбираем совместные пары
+	Mat curvatureConditionMat = Mat::zeros(m_canny.rows, m_canny.cols, CV_8UC3);
+	int cond1 = 0, cond2 = 0;
 	for(int aI = 0; aI < numArcsI; aI++){ 
-		for(int aII = 0; aII < numArcsII; aII++){
-			if(m_arcsInCoordinateQuarters[1][aII].front().x <= m_arcsInCoordinateQuarters[0][aI].back().x) // aI должна быть правее aII
-				m_possibleIandII.emplace_back(aI, aII);
+		for(int aII = 0; aII < numArcsII; aII++)
+		{
+			// aI должна быть правее aII
+			if(m_arcsInCoordinateQuarters[1][aII].front().x <= m_arcsInCoordinateQuarters[0][aI].front().x)
+			{
+				if(curvatureCondition(m_arcsInCoordinateQuarters[0][aI], m_arcsInCoordinateQuarters[1][aII]))
+				{
+					m_possibleIandII.emplace_back(aI, aII);
+				}
+				/*else
+				{
+					cond1++;
+					if (cond1 <= 3)
+					{
+						uchar randomColor[3] = {rand() % 256, rand() % 256, rand() % 256};
+						drawArc(m_arcsInCoordinateQuarters[0][aI], curvatureConditionMat, randomColor);
+						drawArc(m_arcsInCoordinateQuarters[1][aII], curvatureConditionMat, randomColor);
+					}
+				}*/
+			}
 		}
 	}
 	for(int aII = 0; aII < numArcsII; aII++){
-		for(int aIII = 0; aIII < numArcsIII; aIII++){
-			if(m_arcsInCoordinateQuarters[2][aIII].back().y >= m_arcsInCoordinateQuarters[1][aII].back().y) // aIII должна быть под aII
-				m_possibleIIandIII.emplace_back(aII, aIII);
+		for(int aIII = 0; aIII < numArcsIII; aIII++)
+		{
+			// aIII должна быть под aII
+			if(m_arcsInCoordinateQuarters[2][aIII].front().y >= m_arcsInCoordinateQuarters[1][aII].back().y)
+			{
+				
+				if(curvatureCondition(m_arcsInCoordinateQuarters[1][aII], m_arcsInCoordinateQuarters[2][aIII]))
+					m_possibleIIandIII.emplace_back(aII, aIII);
+				/*else 
+				{
+					
+					if (cond1 == 3)
+					{
+						/*uchar randomColor[3] = {rand() % 256, rand() % 256, rand() % 256};
+						drawArc(m_arcsInCoordinateQuarters[1][aII], curvatureConditionMat, randomColor);
+						randomColor[0] = randomColor[1] = randomColor[2] = rand() % 256;
+						drawArc(m_arcsInCoordinateQuarters[2][aIII], curvatureConditionMat, randomColor);
+					}
+					
+				}*/
+			}
 		}
 	}
 	for(int aIII = 0; aIII < numArcsIII; aIII++){ 
-		for(int aIV = 0; aIV < numArcsIV; aIV++){
-			if(m_arcsInCoordinateQuarters[2][aIII].front().x <= m_arcsInCoordinateQuarters[3][aIV].back().x) // aIII должна быть левее aIV
-				m_possibleIIIandIV.emplace_back(aIII, aIV);
+		for(int aIV = 0; aIV < numArcsIV; aIV++)
+		{
+			// aIII должна быть левее aIV
+			if(m_arcsInCoordinateQuarters[2][aIII].back().x <= m_arcsInCoordinateQuarters[3][aIV].back().x)
+			{
+				if(curvatureCondition(m_arcsInCoordinateQuarters[2][aIII], m_arcsInCoordinateQuarters[3][aIV]))
+					m_possibleIIIandIV.emplace_back(aIII, aIV);
+				/*else if (cond1 == 0)
+				{
+					/*uchar randomColor[3] = {rand() % 256, rand() % 256, rand() % 256};
+					drawArc(m_arcsInCoordinateQuarters[3][aIV], curvatureConditionMat, randomColor);
+					drawArc(m_arcsInCoordinateQuarters[2][aIII], curvatureConditionMat, randomColor);
+					cond1++
+				}*/
+			}
 		}
 	}
 	for(int aIV = 0; aIV < numArcsIV; aIV++){
-		for(int aI = 0; aI < m_arcsInCoordinateQuarters[0].size(); aI++){
-			if(m_arcsInCoordinateQuarters[3][aIV].front().y >= m_arcsInCoordinateQuarters[0][aI].front().y) // aIV должна быть ниже aI
-				m_possibleIVandI.emplace_back(aIV, aI);
+		for(int aI = 0; aI < m_arcsInCoordinateQuarters[0].size(); aI++)
+		{
+			// aIV должна быть ниже aI
+			if(m_arcsInCoordinateQuarters[3][aIV].front().y >= m_arcsInCoordinateQuarters[0][aI].back().y)
+				if(curvatureCondition(m_arcsInCoordinateQuarters[3][aIV], m_arcsInCoordinateQuarters[0][aI]))
+					m_possibleIVandI.emplace_back(aIV, aI);
+				/*else if (cond1 == 0)
+				{				
+					/*uchar randomColor[3] = {rand() % 256, rand() % 256, rand() % 256};
+					drawArc(m_arcsInCoordinateQuarters[0][aI], curvatureConditionMat, randomColor);
+					drawArc(m_arcsInCoordinateQuarters[3][aIV], curvatureConditionMat, randomColor);
+					cond1++;
+				}*/
 		}
 	}
+
 
 	// теперь составляем возможные тройки
 	int numOfPairsIandII   = m_possibleIandII.size();
@@ -323,50 +431,88 @@ void FornaciariPratiDetector::choosePossibleTriplets(){
 		{
 			// если сегмент из четвёртой четверти у этих пар один и тот же, то это возможная тройка
 			if(m_possibleIIIandIV[i].second == m_possibleIVandI[j].first)
-				m_tripletsWithout_II.emplace_back(m_possibleIVandI[i].second, m_possibleIIIandIV[i].first, m_possibleIIIandIV[j].second);
+				m_tripletsWithout_II.emplace_back(m_possibleIVandI[j].second, m_possibleIIIandIV[i].first, m_possibleIIIandIV[i].second);
 		}
 		for(int j = 0; j < numOfPairsIIandIII; j++)
 		{
 			// если сегмент из третьей четверти у этих пар один и тот же, то это возможная тройка
 			if(m_possibleIIIandIV[i].first == m_possibleIIandIII[j].second)
-				m_tripletsWithout_I.emplace_back(m_possibleIandII[i].first, m_possibleIandII[i].second, m_possibleIVandI[j].first);
+				m_tripletsWithout_I.emplace_back(m_possibleIIandIII[j].first, m_possibleIIIandIV[i].first, m_possibleIIIandIV[j].second);
 		}
 	}	
-
-	// without optimization
-	std::cout << m_arcsInCoordinateQuarters[0].size() * m_arcsInCoordinateQuarters[1].size() * m_arcsInCoordinateQuarters[2].size() + 
+	
+	std::cout << "Number of possible triplets of arcs without optimization: "
+			  << m_arcsInCoordinateQuarters[0].size() * m_arcsInCoordinateQuarters[1].size() * m_arcsInCoordinateQuarters[2].size() + 
 				 m_arcsInCoordinateQuarters[1].size() * m_arcsInCoordinateQuarters[2].size() * m_arcsInCoordinateQuarters[3].size() +
 				 m_arcsInCoordinateQuarters[2].size() * m_arcsInCoordinateQuarters[3].size() * m_arcsInCoordinateQuarters[0].size() + 
 				 m_arcsInCoordinateQuarters[3].size() * m_arcsInCoordinateQuarters[0].size() * m_arcsInCoordinateQuarters[1].size() 
 			  << std::endl;
-	std::cout << m_tripletsWithout_I.size() + m_tripletsWithout_II.size() + 
-				 m_tripletsWithout_III.size() + m_tripletsWithout_IV.size() << std::endl;
+	std::cout << "With it: " << m_tripletsWithout_I.size() + m_tripletsWithout_II.size() + 
+				                m_tripletsWithout_III.size() + m_tripletsWithout_IV.size() 
+			  << std::endl;
+#ifdef _DEBUG
+	for (auto triplet : m_tripletsWithout_I)
+	{
+		m_remainingArcsIdx[1].insert(triplet[0]);
+		m_remainingArcsIdx[2].insert(triplet[1]);
+		m_remainingArcsIdx[3].insert(triplet[2]);
+	}
+	for (auto triplet : m_tripletsWithout_II)
+	{
+		m_remainingArcsIdx[0].insert(triplet[0]);
+		m_remainingArcsIdx[2].insert(triplet[1]);
+		m_remainingArcsIdx[3].insert(triplet[2]);
+	}
+	for (auto triplet : m_tripletsWithout_III)
+	{
+		m_remainingArcsIdx[0].insert(triplet[0]);
+		m_remainingArcsIdx[1].insert(triplet[1]);
+		m_remainingArcsIdx[3].insert(triplet[2]);
+	}
+	for (auto triplet : m_tripletsWithout_IV)
+	{
+		m_remainingArcsIdx[0].insert(triplet[0]);
+		m_remainingArcsIdx[1].insert(triplet[1]);
+		m_remainingArcsIdx[2].insert(triplet[2]);
+	}
+	Mat result = Mat::zeros(m_canny.rows, m_canny.cols, CV_8UC3);
+	uchar arcColor[4][3] = {{0, 0, 255}, {0, 255, 0}, {255, 0, 0}, {0, 255, 255}};
+	for (int q = 0; q < 4; q++)
+		for (int i : m_remainingArcsIdx[q])
+			drawArc(m_arcsInCoordinateQuarters[q][i], result, arcColor[q]);
+	displayImage("All possible triplets", result);
+#endif
 }
 
 inline bool FornaciariPratiDetector::isEdgePoint(const Point& point)
 {
 	uchar* volume = m_canny.ptr(point.y);
 	volume += point.x;
-	return *volume == 255;
+	if (*volume > 0){
+		*volume = 0;
+		return true;
+	}
+	return false;
 }
 
+void FornaciariPratiDetector::testTriplets()
+{
+	const double thresholdCenterDiff = 5;
+	Mat canvas = Mat::zeros(m_canny.rows, m_canny.cols, CV_8UC3);
+	for(auto triplet : m_tripletsWithout_IV)
+	{
+			
+	}
 
-// TODO: подумать над тем, чтобы отслеживать среднюю точку ещё на этапе построения дуги
-void FornaciariPratiDetector::findMidPoints(){
-/*	m_arcsMidPoints[0].reserve(m_arcsInCoordinateQuarters[0].size());
-	m_arcsMidPoints[1].reserve(m_arcsInCoordinateQuarters[1].size());
-	m_arcsMidPoints[2].reserve(m_arcsInCoordinateQuarters[2].size());
-	m_arcsMidPoints[3].reserve(m_arcsInCoordinateQuarters[3].size());
-	for(int arcType = 0; arcType < 4; arcType++){ // цикл по типам кривых
-		for (int i = 0; i < m_arcsInCoordinateQuarters[arcType].size(); i++){ // цикл по кривым одного типа
-			int index = 0;
-			int middle_index = m_arcsInCoordinateQuarters[arcType][i].size() / 2;
-			for(auto point = arcs[arcType][i].rbegin(); point != arcs[arcType][i].rend(); point++, number++){ // цикл по точкам кривой
-				if(index == middle_index){
-					arcsMidPoints[arcType].push_back(point);
-					break;
-				}
-			}
-		}
-	}*/
+	for(auto triplet : m_tripletsWithout_III)
+	{
+	}
+
+	for(auto triplet : m_tripletsWithout_II)
+	{
+	}
+
+	for(auto triplet : m_tripletsWithout_I)
+	{
+	}
 }
