@@ -1,9 +1,38 @@
 #include "FornaciariPratiDetector.h"
 #include "opencv2\highgui\highgui.hpp"
+#include <tuple>
 
 using namespace cv;
 using std::string;
 using std::list;
+
+uchar arcColor[4][3] = {{0, 0, 255}, {0, 255, 0}, {255, 0, 0}, {0, 255, 255}};
+
+double getSlope(const std::vector<Point>& midPoints)
+{
+	int middle = midPoints.size() / 2;
+	double slope = 0;
+	for (unsigned int i = 0; i + middle < midPoints.size(); i++)
+	{
+	   double xDiff = midPoints[i].x - midPoints[i + middle].x;
+	   double yDiff = midPoints[i].y - midPoints[i + middle].y;
+	   slope +=  yDiff / xDiff;
+	}
+	slope /= std::ceil(midPoints.size() / 2.);
+	return slope;
+}
+
+Point getAveragePoint(const std::vector<Point>& midPoints)
+{
+	Point avrPoint;
+	for (auto point : midPoints)
+	{
+		avrPoint += point;
+	}
+	avrPoint.x /= midPoints.size();
+	avrPoint.y /= midPoints.size();
+	return avrPoint;
+}
 
 void displayImage(const char* title, const Mat& img, bool wait=false)
 {
@@ -38,37 +67,102 @@ bool curvatureCondition(const Arc& firstArc, const Arc& secondArc)
 	return false;
 }
 
+// находит уравнение прямой, проходящей через середину хорд, параллельных хорде, проведённо между
+// серединой первой дуги и нижней точкой второй
+std::tuple<double, int> findLineCrossingMidpointBetweenMidAndLowPoints(const Arc& arcWithMid, const Arc& arcWithLow)
+{
+	std::vector<Point> midPoints;
+	// a) построить прямую между нижним краем второй дуги и серединой первой
+	Point Pa = arcWithMid[arcWithMid.size()/2];
+	Point Hb = arcWithLow[arcWithLow.size()-1];
+	Point dir_vector = Pa - Hb; // направляющий вектор исходной хорды
+	midPoints.emplace_back((Pa.x + Hb.x) / 2, (Pa.y + Hb.y) / 2);
+	// б) построить ещё 5 параллельных ей
+	// последняя должна иметь крайней точкой верхний край первой дуги
+	// поэтому делим оставшийся отрезок на 6 частей
+	int delta = arcWithMid.size()/4;
+	// каждая последующая хорда будет пересекать вторую дугу выше и выше, поэтому запоминаем, откуда нам 
+	// следует искать следующую точку
+	int checkpoint = arcWithLow.size()-1;
+	
+	for (int point = arcWithMid.size()/2 - delta; point >= 0; point -= delta)
+	{
+		// ищем точку на второй дуге, которую пересекает хорда
+		// будем брать ту, которая после подстановки в уравнение прямой с данным коэфеициентом С и
+		// данным направляющим вектором даёт наименьшую невязку (отклонение от 0).
+		// коэффициент в уравнении прямой, проходящей через текущую точку первой дуги
+		int С = dir_vector.x * arcWithMid[point].y - dir_vector.y * arcWithMid[point].x; 
+		int prev_discrepancy = abs(dir_vector.y * arcWithLow[checkpoint].x - dir_vector.x * arcWithLow[checkpoint].y + С);
+		for (checkpoint--; checkpoint >=0; checkpoint--)
+		{
+			int discrepancy = abs(dir_vector.y * arcWithLow[checkpoint].x - dir_vector.x * arcWithLow[checkpoint].y + С);
+			if (discrepancy > prev_discrepancy)
+			{
+				checkpoint++;
+				break;
+			}
+			prev_discrepancy = discrepancy;
+		}
+		// в) найди середины хорд
+		midPoints.emplace_back((arcWithMid[point].x + arcWithLow[checkpoint].x) / 2, 
+							   (arcWithMid[point].y + arcWithLow[checkpoint].y) / 2);
+	}
+	double slope = getSlope(midPoints);
+	Point pointOnLineCrossingCenter = getAveragePoint(midPoints);
+	// y = slope*x + coeff
+	int coeff = pointOnLineCrossingCenter.y - slope * pointOnLineCrossingCenter.x;
+	return std::make_tuple(slope, coeff);
+}
+
+std::tuple<double, int> findLineCrossingMidpointBetweenMidAndHighPoints(const Arc& arcWithMid, const Arc& arcWithHigh)
+{
+	std::vector<Point> midPoints;
+	// a) построить прямую между нижним краем второй дуги и серединой первой
+	Point Pa = arcWithMid[arcWithMid.size()/2];
+	Point Hb = arcWithHigh[0];
+	Point dir_vector = Pa - Hb; // направляющий вектор исходной хорды
+	midPoints.emplace_back((Pa.x + Hb.x) / 2, (Pa.y + Hb.y) / 2);
+	// б) построить ещё 5 параллельных ей
+	// последняя должна иметь крайней точкой верхний край первой дуги
+	// поэтому делим оставшийся отрезок на 6 частей
+	int delta = arcWithMid.size()/48;
+	// каждая последующая хорда будет пересекать вторую дугу выше и выше, поэтому запоминаем, откуда нам 
+	// следует искать следующую точку
+	int checkpoint = 0;
+	
+	for (int point = arcWithMid.size()/2 - delta; point >= 0; point -= delta)
+	{
+		// ищем точку на второй дуге, которую пересекает хорда
+		// будем брать ту, которая после подстановки в уравнение прямой с данным коэфеициентом С и
+		// данным направляющим вектором даёт наименьшую невязку (отклонение от 0).
+		// коэффициент в уравнении прямой, проходящей через текущую точку первой дуги
+		int С = dir_vector.x * arcWithMid[point].y - dir_vector.y * arcWithMid[point].x; 
+		int prev_discrepancy = abs(dir_vector.y * arcWithHigh[checkpoint].x - dir_vector.x * arcWithHigh[checkpoint].y + С);
+		for (checkpoint++; checkpoint < arcWithHigh.size(); checkpoint++)
+		{
+			int discrepancy = abs(dir_vector.y * arcWithHigh[checkpoint].x - dir_vector.x * arcWithHigh[checkpoint].y + С);
+			if (discrepancy > prev_discrepancy)
+			{
+				checkpoint--;
+				break;
+			}
+			prev_discrepancy = discrepancy;
+		}
+		// в) найди середины хорд
+		midPoints.emplace_back((arcWithMid[point].x + arcWithHigh[checkpoint].x) / 2, 
+							   (arcWithMid[point].y + arcWithHigh[checkpoint].y) / 2);
+	}
+	double slope = getSlope(midPoints);
+	Point pointOnLineCrossingCenter = getAveragePoint(midPoints);
+	// y = slope*x + coeff
+	int coeff = pointOnLineCrossingCenter.y - slope * pointOnLineCrossingCenter.x;
+	return std::make_tuple(slope, coeff);
+}
+
 void findCenterIandII(const Arc& arcI, const Arc& arcII)
 {
 
 }
-
-double getSlope(std::vector<Point> midPoints, bool& errorFlag)
-{
-	int middle = midPoints.size() / 2;
-	if (middle == 0)
-	{
-		errorFlag = true;
-		return 0;
-	}
-	errorFlag = false;
-	double S = 0;
-	for (int i = 0; i < middle; i++)
-	{
-		int x1 = midPoints[i].x;
-		int y1 = midPoints[i].y;
-		int x2 = midPoints[middle + i].x;
-		int y2 = midPoints[middle + i].y;
-		double slope;
-		if (y2 - y1 == 0)
-			slope = INT_MAX;
-		else
-			slope = (x2 - x1) / (y2 - y1);
-		S += slope;
-	}
-	return S/middle;
-}
-
 
 FornaciariPratiDetector::FornaciariPratiDetector(string configFile)
 	: SIMILARITY_WITH_LINE_THRESHOLD(0), MINIMUM_ABOVE_UNDER_AREA_DIFFERENCE_RATIO(0)
@@ -94,6 +188,7 @@ vector<Ellipse> FornaciariPratiDetector::DetectEllipses(const Mat& src)
 	useCannyDetector(); // TODO: реализовать детектор Кенни самому с переиспользованием посчитанных собелей
 	heuristicSearchOfArcs();
 	choosePossibleTriplets();
+	testTriplets();
 	waitKey(0);
 	vector<Ellipse> ellipses;
 	return ellipses;
@@ -475,8 +570,8 @@ void FornaciariPratiDetector::choosePossibleTriplets(){
 		m_remainingArcsIdx[1].insert(triplet[1]);
 		m_remainingArcsIdx[2].insert(triplet[2]);
 	}
+
 	Mat result = Mat::zeros(m_canny.rows, m_canny.cols, CV_8UC3);
-	uchar arcColor[4][3] = {{0, 0, 255}, {0, 255, 0}, {255, 0, 0}, {0, 255, 255}};
 	for (int q = 0; q < 4; q++)
 		for (int i : m_remainingArcsIdx[q])
 			drawArc(m_arcsInCoordinateQuarters[q][i], result, arcColor[q]);
@@ -501,7 +596,34 @@ void FornaciariPratiDetector::testTriplets()
 	Mat canvas = Mat::zeros(m_canny.rows, m_canny.cols, CV_8UC3);
 	for(auto triplet : m_tripletsWithout_IV)
 	{
-			
+		Mat chords = Mat::zeros(m_canny.rows, m_canny.cols, CV_8UC3);
+		Arc arcI = m_arcsInCoordinateQuarters[0][triplet[0]];
+		Arc arcII = m_arcsInCoordinateQuarters[1][triplet[1]];
+		Arc arcIII = m_arcsInCoordinateQuarters[2][triplet[2]];
+		drawArc(arcI, chords, arcColor[0]);
+		drawArc(arcII, chords, arcColor[1]);
+		drawArc(arcIII, chords, arcColor[2]);
+		
+
+		// 1) построить прямую, проходящую через середны хорд между дугой I и II
+		int coeff_1, coeff_2;
+		double slope_1, slope_2;
+		std::tie(slope_1, coeff_1) = findLineCrossingMidpointBetweenMidAndLowPoints(arcI, arcII);
+		std::tie(slope_2, coeff_2) = findLineCrossingMidpointBetweenMidAndLowPoints(arcII, arcI);
+		line(chords, Point(0, coeff_1), Point(600, slope_1*600 + coeff_1), Scalar(255, 0, 0));
+		line(chords, Point(0, coeff_2), Point(600, slope_2*600 + coeff_2), Scalar(255, 0, 0));
+
+		std::tie(slope_1, coeff_1) = findLineCrossingMidpointBetweenMidAndLowPoints(arcI, arcIII);
+		std::tie(slope_2, coeff_2) = findLineCrossingMidpointBetweenMidAndLowPoints(arcIII, arcI);
+		line(chords, Point(0, coeff_1), Point(600, slope_1*600 + coeff_1), Scalar(0, 255, 0));
+		line(chords, Point(0, coeff_2), Point(600, slope_2*600 + coeff_2), Scalar(0, 255, 0));
+
+		std::tie(slope_1, coeff_1) = findLineCrossingMidpointBetweenMidAndLowPoints(arcII, arcIII);
+		std::tie(slope_2, coeff_2) = findLineCrossingMidpointBetweenMidAndHighPoints(arcIII, arcI);
+		line(chords, Point(0, coeff_1), Point(600, slope_1*600 + coeff_1), Scalar(0, 0, 255));
+		line(chords, Point(0, coeff_2), Point(600, slope_2*600 + coeff_2), Scalar(0, 0, 255));
+
+		displayImage("Chords", chords);
 	}
 
 	for(auto triplet : m_tripletsWithout_III)

@@ -41,7 +41,7 @@ Point findCenterIIIandIV(int arcIII, int arcI, bool &errorFlag);
 Point findCenterIVandI(int arcIV, int arcI, bool &errorFlag);
 
 int main(){
-	src = ourImread(string("C:\\Диплом\\\Images\\bicycle0.jpg"), CV_LOAD_IMAGE_GRAYSCALE);
+	src = ourImread(string("C:\\Диплом\\\Images\\roadsign1.jpg"), CV_LOAD_IMAGE_GRAYSCALE);
 	namedWindow("Source image", CV_WINDOW_AUTOSIZE);
 	imshow("Source image", src);
 
@@ -73,6 +73,11 @@ Mat findArcs(const Mat& src){
 	Sobel(blurred, sobelX, CV_16S, 1, 0, sobelKernelSize);
 	Sobel(blurred, sobelY, CV_16S, 0, 1, sobelKernelSize);
 	Canny(blurred, canny, cannyLowTreshold, cannyLowTreshold * cannyHighLowtRatio);
+
+	namedWindow("sobelX", CV_WINDOW_AUTOSIZE);
+	imshow("sobelX", sobelX);
+	namedWindow("sobelY", CV_WINDOW_AUTOSIZE);
+	imshow("sobelY", sobelY);
 	namedWindow("Canny", CV_WINDOW_AUTOSIZE);
 	imshow("Canny", canny);
 
