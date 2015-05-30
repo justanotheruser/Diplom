@@ -80,7 +80,7 @@ std::tuple<double, int> findLineCrossingMidpointBetweenMidAndLowPoints(const Arc
 	// б) построить ещё 5 параллельных ей
 	// последняя должна иметь крайней точкой верхний край первой дуги
 	// поэтому делим оставшийся отрезок на 6 частей
-	int delta = arcWithMid.size()/4;
+	int delta = arcWithMid.size()/48;
 	// каждая последующая хорда будет пересекать вторую дугу выше и выше, поэтому запоминаем, откуда нам 
 	// следует искать следующую точку
 	int checkpoint = arcWithLow.size()-1;
@@ -159,9 +159,18 @@ std::tuple<double, int> findLineCrossingMidpointBetweenMidAndHighPoints(const Ar
 	return std::make_tuple(slope, coeff);
 }
 
-void findCenterIandII(const Arc& arcI, const Arc& arcII)
+cv::Point findIntersection(std::tuple<double /*slope*/, int /*coeff*/> line_1, std::tuple<double, int> line_2)
 {
+	// y = x*slope_1 + coeff_1
+	// y = x*slope_2 + coeff_2
 
+	// x*slope_2 + coeff_2 = x*slope_1 + coeff_1
+	// x*(slope_2 - slope_1) = coeff_1 - coeff_2
+	// x = (coeff_1 - coeff_2) / (slope_2 - slope_1)
+	int x = static_cast<int>((std::get<1>(line_1) - std::get<1>(line_2)) 
+		/ (std::get<0>(line_2) - std::get<0>(line_1)));
+	int y = x*std::get<0>(line_1) + std::get<1>(line_1);
+	return Point(x, y);
 }
 
 FornaciariPratiDetector::FornaciariPratiDetector(string configFile)
@@ -606,22 +615,26 @@ void FornaciariPratiDetector::testTriplets()
 		
 
 		// 1) построить прямую, проходящую через середны хорд между дугой I и II
-		int coeff_1, coeff_2;
-		double slope_1, slope_2;
-		std::tie(slope_1, coeff_1) = findLineCrossingMidpointBetweenMidAndLowPoints(arcI, arcII);
-		std::tie(slope_2, coeff_2) = findLineCrossingMidpointBetweenMidAndLowPoints(arcII, arcI);
-		line(chords, Point(0, coeff_1), Point(600, slope_1*600 + coeff_1), Scalar(255, 0, 0));
-		line(chords, Point(0, coeff_2), Point(600, slope_2*600 + coeff_2), Scalar(255, 0, 0));
+		auto line_1 = findLineCrossingMidpointBetweenMidAndLowPoints(arcI, arcII);
+		auto line_2 = findLineCrossingMidpointBetweenMidAndLowPoints(arcII, arcI);
+		Point intersection = findIntersection(line_1, line_2);
+		std::cout << intersection << std::endl;
+		line(chords, Point(0, std::get<1>(line_1)), Point(600, std::get<0>(line_1)*600 + std::get<1>(line_1)), Scalar(255, 0, 0));
+		line(chords, Point(0, std::get<1>(line_2)), Point(600, std::get<0>(line_2)*600 + std::get<1>(line_2)), Scalar(255, 0, 0));
 
-		std::tie(slope_1, coeff_1) = findLineCrossingMidpointBetweenMidAndLowPoints(arcI, arcIII);
-		std::tie(slope_2, coeff_2) = findLineCrossingMidpointBetweenMidAndLowPoints(arcIII, arcI);
-		line(chords, Point(0, coeff_1), Point(600, slope_1*600 + coeff_1), Scalar(0, 255, 0));
-		line(chords, Point(0, coeff_2), Point(600, slope_2*600 + coeff_2), Scalar(0, 255, 0));
+		line_1 = findLineCrossingMidpointBetweenMidAndLowPoints(arcI, arcIII);
+		line_2 = findLineCrossingMidpointBetweenMidAndLowPoints(arcIII, arcI);
+		intersection = findIntersection(line_1, line_2);
+		std::cout << intersection << std::endl;
+		line(chords, Point(0, std::get<1>(line_1)), Point(600, std::get<0>(line_1)*600 + std::get<1>(line_1)), Scalar(0, 255, 0));
+		line(chords, Point(0, std::get<1>(line_2)), Point(600, std::get<0>(line_2)*600 + std::get<1>(line_2)), Scalar(0, 255, 0));
 
-		std::tie(slope_1, coeff_1) = findLineCrossingMidpointBetweenMidAndLowPoints(arcII, arcIII);
-		std::tie(slope_2, coeff_2) = findLineCrossingMidpointBetweenMidAndHighPoints(arcIII, arcI);
-		line(chords, Point(0, coeff_1), Point(600, slope_1*600 + coeff_1), Scalar(0, 0, 255));
-		line(chords, Point(0, coeff_2), Point(600, slope_2*600 + coeff_2), Scalar(0, 0, 255));
+		line_1 = findLineCrossingMidpointBetweenMidAndLowPoints(arcII, arcIII);
+		line_2 = findLineCrossingMidpointBetweenMidAndHighPoints(arcIII, arcII);
+		intersection = findIntersection(line_1, line_2);
+		std::cout << intersection << std::endl;
+		line(chords, Point(0, std::get<1>(line_1)), Point(600, std::get<0>(line_1)*600 + std::get<1>(line_1)), Scalar(0, 0, 255));
+		line(chords, Point(0, std::get<1>(line_2)), Point(600, std::get<0>(line_2)*600 + std::get<1>(line_2)), Scalar(0, 0, 255));
 
 		displayImage("Chords", chords);
 	}
