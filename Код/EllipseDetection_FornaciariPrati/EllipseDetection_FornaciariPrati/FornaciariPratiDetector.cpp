@@ -1,6 +1,8 @@
 #include "FornaciariPratiDetector.h"
+#include "HoughTransformAccumulator.h"
 #include "opencv2\highgui\highgui.hpp"
 #include <tuple>
+#define PI 3.1415926
 
 using namespace cv;
 using std::string;
@@ -65,6 +67,35 @@ bool curvatureCondition(const Arc& firstArc, const Arc& secondArc)
 		midPointsDist > cv::norm(secondC-firstMidPoint))
 		return true;
 	return false;
+}
+
+int findMajorAxis(const Arc& arc_1, const Arc& arc_2, const Arc& arc_3, const Point& center, double N, double K)
+{
+	double x0, y0;
+	HoughTransformAccumulator acc;
+	int A = 0;
+	for (auto point : arc_1)
+	{
+		x0 = (point.x - center.x + (point.y - center.y)*K) / sqrt(K*K + 1);
+		y0 = (-(point.x - center.x)*K + point.y - center.y) / sqrt(K*K + 1);
+		A += std::sqrt((x0*x0*N*N + y0*y0) / (N*N*(K*K + 1)));
+		acc.Add(std::sqrt((x0*x0*N*N + y0*y0) / (N*N*(K*K + 1))));
+	}
+	for (auto point : arc_2)
+	{
+		x0 = (point.x - center.x + (point.y - center.y)*K) / sqrt(K*K + 1);
+		y0 = (-(point.x - center.x)*K + point.y - center.y) / sqrt(K*K + 1);
+		A += std::sqrt((x0*x0*N*N + y0*y0) / (N*N*(K*K + 1)));
+		acc.Add(std::sqrt((x0*x0*N*N + y0*y0) / (N*N*(K*K + 1))));
+	}
+	for (auto point : arc_3)
+	{
+		x0 = (point.x - center.x + (point.y - center.y)*K) / sqrt(K*K + 1);
+		y0 = (-(point.x - center.x)*K + point.y - center.y) / sqrt(K*K + 1);
+		acc.Add(std::sqrt((x0*x0*N*N + y0*y0) / (N*N*(K*K + 1))));
+	}
+	std::cout << acc.FindMax() << std::endl;
+	return acc.FindMax();
 }
 
 // находит уравнение прямой, проходящей через середину хорд, параллельных хорде, проведённо между
@@ -171,6 +202,29 @@ cv::Point findIntersection(std::tuple<double /*slope*/, int /*coeff*/> line_1, s
 		/ (std::get<0>(line_2) - std::get<0>(line_1)));
 	int y = x*std::get<0>(line_1) + std::get<1>(line_1);
 	return Point(x, y);
+}
+
+std::tuple<double, double, double> getEllipseParams(double q1, double q2, double q3, double q4)
+{
+	double alpha = q1*q2 - q3*q4;
+	double beta = (q3*q4 + 1)*(q1 + q2) - (q1*q2 + 1)*(q3 + q4);
+	double K_plus =	(-beta + std::sqrt(beta*beta + 4*alpha*alpha)) / (2*alpha);
+	double N_plus = std::sqrt(-(q1 - K_plus) * (q2 - K_plus) / ((1 + q1*K_plus)*(1 + q2*K_plus)));
+	double N, K, ro;
+	if (N_plus <= 1)
+	{
+		N = N_plus;
+		ro = std::atan(K_plus);
+		K = K_plus;
+	}
+	else
+	{
+		N = 1/N_plus;
+		ro = std::atan(K_plus) + PI/2;
+		K = std::tan(ro);
+	}
+	ro = ro/PI * 180;
+	return std::tuple<double, double, double>(N, K, ro);
 }
 
 FornaciariPratiDetector::FornaciariPratiDetector(string configFile)
@@ -605,38 +659,47 @@ void FornaciariPratiDetector::testTriplets()
 	Mat canvas = Mat::zeros(m_canny.rows, m_canny.cols, CV_8UC3);
 	for(auto triplet : m_tripletsWithout_IV)
 	{
-		Mat chords = Mat::zeros(m_canny.rows, m_canny.cols, CV_8UC3);
+		/*Mat chords = Mat::zeros(m_canny.rows, m_canny.cols, CV_8UC3);
 		Arc arcI = m_arcsInCoordinateQuarters[0][triplet[0]];
 		Arc arcII = m_arcsInCoordinateQuarters[1][triplet[1]];
 		Arc arcIII = m_arcsInCoordinateQuarters[2][triplet[2]];
-		drawArc(arcI, chords, arcColor[0]);
-		drawArc(arcII, chords, arcColor[1]);
+		drawArc(arcI, chords, arcColor[2]);
+		drawArc(arcII, chords, arcColor[2]);
 		drawArc(arcIII, chords, arcColor[2]);
 		
+		// ищем прямые, проходящие через середины параллельных хорд
+		// они пересекаются в центре эллипса
+		auto line_12 = findLineCrossingMidpointBetweenMidAndLowPoints(arcI, arcII);
+		auto line_21 = findLineCrossingMidpointBetweenMidAndLowPoints(arcII, arcI);
+		Point intersection_1 = findIntersection(line_12, line_21);
+		auto line_13 = findLineCrossingMidpointBetweenMidAndLowPoints(arcI, arcIII);
+		auto line_31 = findLineCrossingMidpointBetweenMidAndLowPoints(arcIII, arcI);
+		Point intersection_2 = findIntersection(line_13, line_31);
+		auto line_23 = findLineCrossingMidpointBetweenMidAndLowPoints(arcII, arcIII);
+		auto line_32 = findLineCrossingMidpointBetweenMidAndHighPoints(arcIII, arcII);
+		Point intersection_3 = findIntersection(line_23, line_32);
 
-		// 1) построить прямую, проходящую через середны хорд между дугой I и II
-		auto line_1 = findLineCrossingMidpointBetweenMidAndLowPoints(arcI, arcII);
-		auto line_2 = findLineCrossingMidpointBetweenMidAndLowPoints(arcII, arcI);
-		Point intersection = findIntersection(line_1, line_2);
-		std::cout << intersection << std::endl;
-		line(chords, Point(0, std::get<1>(line_1)), Point(600, std::get<0>(line_1)*600 + std::get<1>(line_1)), Scalar(255, 0, 0));
-		line(chords, Point(0, std::get<1>(line_2)), Point(600, std::get<0>(line_2)*600 + std::get<1>(line_2)), Scalar(255, 0, 0));
+		double q1, q2, q3, q4;
+		q1 = static_cast<double>((arcII[arcII.size()-1].y - arcI[arcI.size()/2].y)) / 
+			 (arcII[arcII.size()-1].x - arcI[arcI.size()/2].x);
+		q2 = std::get<0>(line_12);
+		q3 = static_cast<double>((arcIII[arcIII.size()-1].y - arcII[arcII.size()/2].y)) / 
+			 (arcIII[arcIII.size()-1].x - arcII[arcII.size()/2].x);
+		q4 = std::get<0>(line_23);
 
-		line_1 = findLineCrossingMidpointBetweenMidAndLowPoints(arcI, arcIII);
-		line_2 = findLineCrossingMidpointBetweenMidAndLowPoints(arcIII, arcI);
-		intersection = findIntersection(line_1, line_2);
-		std::cout << intersection << std::endl;
-		line(chords, Point(0, std::get<1>(line_1)), Point(600, std::get<0>(line_1)*600 + std::get<1>(line_1)), Scalar(0, 255, 0));
-		line(chords, Point(0, std::get<1>(line_2)), Point(600, std::get<0>(line_2)*600 + std::get<1>(line_2)), Scalar(0, 255, 0));
+		double N, K, ro;
+		std::tie(N, K, ro) = getEllipseParams(q1, q2, q3, q4);
+		 
+		Point center((intersection_1.x + intersection_2.x + intersection_3.x) / 3,
+					 (intersection_1.y + intersection_2.y + intersection_3.y) / 3);
+			
+		int A = findMajorAxis(arcI, arcII, arcIII, center, N, K);
+		int B = A * N;
+		
+		std::cout << "ro " << ro << std::endl;
+		ellipse(chords, center, Size(A, B), ro, 0, 360, Scalar(0, 0, 255));
 
-		line_1 = findLineCrossingMidpointBetweenMidAndLowPoints(arcII, arcIII);
-		line_2 = findLineCrossingMidpointBetweenMidAndHighPoints(arcIII, arcII);
-		intersection = findIntersection(line_1, line_2);
-		std::cout << intersection << std::endl;
-		line(chords, Point(0, std::get<1>(line_1)), Point(600, std::get<0>(line_1)*600 + std::get<1>(line_1)), Scalar(0, 0, 255));
-		line(chords, Point(0, std::get<1>(line_2)), Point(600, std::get<0>(line_2)*600 + std::get<1>(line_2)), Scalar(0, 0, 255));
-
-		displayImage("Chords", chords);
+		displayImage("Chords", chords);*/
 	}
 
 	for(auto triplet : m_tripletsWithout_III)
