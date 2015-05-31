@@ -73,29 +73,27 @@ int findMajorAxis(const Arc& arc_1, const Arc& arc_2, const Arc& arc_3, const Po
 {
 	double x0, y0;
 	HoughTransformAccumulator acc;
-	int A = 0;
 	for (auto point : arc_1)
 	{
 		x0 = (point.x - center.x + (point.y - center.y)*K) / sqrt(K*K + 1);
 		y0 = (-(point.x - center.x)*K + point.y - center.y) / sqrt(K*K + 1);
-		A += std::sqrt((x0*x0*N*N + y0*y0) / (N*N*(K*K + 1)));
-		acc.Add(std::sqrt((x0*x0*N*N + y0*y0) / (N*N*(K*K + 1))));
+		acc.Add(static_cast<int>(std::sqrt((x0*x0*N*N + y0*y0) / (N*N*(K*K + 1)))));
 	}
 	for (auto point : arc_2)
 	{
 		x0 = (point.x - center.x + (point.y - center.y)*K) / sqrt(K*K + 1);
 		y0 = (-(point.x - center.x)*K + point.y - center.y) / sqrt(K*K + 1);
-		A += std::sqrt((x0*x0*N*N + y0*y0) / (N*N*(K*K + 1)));
-		acc.Add(std::sqrt((x0*x0*N*N + y0*y0) / (N*N*(K*K + 1))));
+		acc.Add(static_cast<int>(std::sqrt((x0*x0*N*N + y0*y0) / (N*N*(K*K + 1)))));
 	}
 	for (auto point : arc_3)
 	{
 		x0 = (point.x - center.x + (point.y - center.y)*K) / sqrt(K*K + 1);
 		y0 = (-(point.x - center.x)*K + point.y - center.y) / sqrt(K*K + 1);
-		acc.Add(std::sqrt((x0*x0*N*N + y0*y0) / (N*N*(K*K + 1))));
+		acc.Add(static_cast<int>(std::sqrt((x0*x0*N*N + y0*y0) / (N*N*(K*K + 1)))));
 	}
-	std::cout << acc.FindMax() << std::endl;
-	return acc.FindMax();
+	int Ax = acc.FindMax();
+	int Ay = abs(Ax * K);
+	return static_cast<int>(std::sqrt(Ax*Ax + Ay*Ay));
 }
 
 // находит уравнение прямой, проходящей через середину хорд, параллельных хорде, проведённо между
@@ -111,7 +109,8 @@ std::tuple<double, int> findLineCrossingMidpointBetweenMidAndLowPoints(const Arc
 	// б) построить ещё 5 параллельных ей
 	// последняя должна иметь крайней точкой верхний край первой дуги
 	// поэтому делим оставшийся отрезок на 6 частей
-	int delta = arcWithMid.size()/48;
+	int delta = arcWithMid.size()/50;
+	if (delta <= 0) delta = 1;
 	// каждая последующая хорда будет пересекать вторую дугу выше и выше, поэтому запоминаем, откуда нам 
 	// следует искать следующую точку
 	int checkpoint = arcWithLow.size()-1;
@@ -156,7 +155,8 @@ std::tuple<double, int> findLineCrossingMidpointBetweenMidAndHighPoints(const Ar
 	// б) построить ещё 5 параллельных ей
 	// последняя должна иметь крайней точкой верхний край первой дуги
 	// поэтому делим оставшийся отрезок на 6 частей
-	int delta = arcWithMid.size()/48;
+	int delta = arcWithMid.size()/50;
+	if (delta <= 0) delta = 1;
 	// каждая последующая хорда будет пересекать вторую дугу выше и выше, поэтому запоминаем, откуда нам 
 	// следует искать следующую точку
 	int checkpoint = 0;
@@ -211,6 +211,7 @@ std::tuple<double, double, double> getEllipseParams(double q1, double q2, double
 	double K_plus =	(-beta + std::sqrt(beta*beta + 4*alpha*alpha)) / (2*alpha);
 	double N_plus = std::sqrt(-(q1 - K_plus) * (q2 - K_plus) / ((1 + q1*K_plus)*(1 + q2*K_plus)));
 	double N, K, ro;
+	
 	if (N_plus <= 1)
 	{
 		N = N_plus;
@@ -223,7 +224,11 @@ std::tuple<double, double, double> getEllipseParams(double q1, double q2, double
 		ro = std::atan(K_plus) + PI/2;
 		K = std::tan(ro);
 	}
-	ro = ro/PI * 180;
+	std::cout << "N_plus " << N_plus << std::endl;
+	std::cout << "N " << N << std::endl;
+	std::cout << "K_plus " << K_plus << std::endl;
+	std::cout << "K " << K << std::endl;
+	std::cout << "ro " << ro << std::endl;
 	return std::tuple<double, double, double>(N, K, ro);
 }
 
@@ -693,17 +698,57 @@ void FornaciariPratiDetector::testTriplets()
 		Point center((intersection_1.x + intersection_2.x + intersection_3.x) / 3,
 					 (intersection_1.y + intersection_2.y + intersection_3.y) / 3);
 			
-		int A = findMajorAxis(arcI, arcII, arcIII, center, N, K);
-		int B = A * N;
-		
-		std::cout << "ro " << ro << std::endl;
-		ellipse(chords, center, Size(A, B), ro, 0, 360, Scalar(0, 0, 255));
+		int A = abs(findMajorAxis(arcI, arcII, arcIII, center, N, K));
+		double B = A * N;
+		double roInDegrees = ro/PI * 180;
+		std::cout << "roInDegrees " << roInDegrees << std::endl;
+		ellipse(chords, center, Size(A, B), roInDegrees, 0, 360, Scalar(0, 0, 255));
 
 		displayImage("Chords", chords);*/
 	}
 
 	for(auto triplet : m_tripletsWithout_III)
 	{
+	    Mat chords = Mat::zeros(m_canny.rows, m_canny.cols, CV_8UC3);
+		Arc arcI = m_arcsInCoordinateQuarters[0][triplet[0]];
+		Arc arcII = m_arcsInCoordinateQuarters[1][triplet[1]];
+		Arc arcIV = m_arcsInCoordinateQuarters[3][triplet[2]];
+		drawArc(arcI, chords, arcColor[0]);
+		drawArc(arcII, chords, arcColor[1]);
+		drawArc(arcIV, chords, arcColor[3]);
+		
+		// ищем прямые, проходящие через середины параллельных хорд
+		// они пересекаются в центре эллипса
+		auto line_12 = findLineCrossingMidpointBetweenMidAndLowPoints(arcI, arcII);
+		auto line_21 = findLineCrossingMidpointBetweenMidAndLowPoints(arcII, arcI);
+		Point intersection_1 = findIntersection(line_12, line_21);
+		auto line_14 = findLineCrossingMidpointBetweenMidAndLowPoints(arcI, arcIV);
+		auto line_41 = findLineCrossingMidpointBetweenMidAndHighPoints(arcIV, arcI);
+		Point intersection_2 = findIntersection(line_14, line_41);
+		auto line_24 = findLineCrossingMidpointBetweenMidAndLowPoints(arcII, arcIV);
+		auto line_42 = findLineCrossingMidpointBetweenMidAndLowPoints(arcIV, arcII);
+		Point intersection_3 = findIntersection(line_24, line_42);
+
+		double q1, q2, q3, q4;
+		q1 = static_cast<double>((arcII[arcII.size()-1].y - arcI[arcI.size()/2].y)) / 
+			 (arcII[arcII.size()-1].x - arcI[arcI.size()/2].x);
+		q2 = std::get<0>(line_12);
+		q3 = static_cast<double>((arcIV[arcIV.size()-1].y - arcI[arcI.size()/2].y)) / 
+			 (arcIV[arcIV.size()-1].x - arcI[arcI.size()/2].x);
+		q4 = std::get<0>(line_14);
+
+		double N, K, ro;
+		std::tie(N, K, ro) = getEllipseParams(q1, q2, q3, q4);
+		 
+		Point center((intersection_1.x + intersection_2.x + intersection_3.x) / 3,
+					 (intersection_1.y + intersection_2.y + intersection_3.y) / 3);
+			
+		int A = abs(findMajorAxis(arcI, arcII, arcIV, center, N, K));
+		double B = A * N;
+		double roInDegrees = ro/PI * 180;
+		std::cout << "roInDegrees " << roInDegrees << std::endl;
+		ellipse(chords, center, Size(A, B), roInDegrees, 0, 360, Scalar(0, 0, 255));
+		displayImage("Chords", chords);
 	}
 
 	for(auto triplet : m_tripletsWithout_II)
