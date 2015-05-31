@@ -1,24 +1,28 @@
 #include "HoughTransformAccumulator.h"
 
 
-void HoughTransformAccumulator::Add(int value)
+void HoughTransformAccumulator::Add(double value)
 {
-	if(m_points.size() < value+1)
+	auto it = m_points.find(value);
+	if(it != m_points.end())
 	{
-		m_points.resize(value+1);
+		it->second++;
 	}
-	++m_points[value];
+	else
+	{
+		m_points.emplace(value, 0);
+	}
 }
 
-int HoughTransformAccumulator::FindMax()
+double HoughTransformAccumulator::FindMax()
 {
-	int maxHit = 0;
-	for (int i = 1; i < m_points.size(); i++)
+	auto max = m_points.begin();
+	for (auto it = ++m_points.begin(); it != m_points.end(); ++it)
 	{
-		if (m_points[maxHit] < m_points[i])
+		if (it->second > max->second)
 		{
-			maxHit = i;
+			max = it;
 		}
 	}
-	return maxHit;
+	return max->first;
 }

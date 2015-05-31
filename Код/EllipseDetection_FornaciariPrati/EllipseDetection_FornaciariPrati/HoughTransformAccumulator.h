@@ -1,11 +1,11 @@
-#include <vector>
+#include <map>
 
 class HoughTransformAccumulator
 {
 public:
-	void Add(int value);
-	int FindMax();
+	void Add(double value);
+	double FindMax();
 private:
-	std::vector<int> m_points;
+	std::map<double, int> m_points;
 };
 
