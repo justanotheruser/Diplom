@@ -8,6 +8,7 @@ using cv::Point;
 
 typedef std::vector<Point> Arc;
 typedef std::vector<Arc> Arcs;
+typedef std::vector<Ellipse> Ellipses;
 
 // TODO: replace this class with tuples after switching to C++14
 class Triplet
@@ -35,7 +36,8 @@ class FornaciariPratiDetector : public EllipseDetector
 {
 public:
 
-	FornaciariPratiDetector(double similarityWithLineThreshold, double minimumAboveUnderAreaDifferenceRatio,
+	FornaciariPratiDetector(double scoreThreshold, double similarityWithLineThreshold, 
+		double minimumAboveUnderAreaDifferenceRatio,
 		int blurKernelSize = 3, int blurSigma = 1, int sobelKernelSize = 3);
 	FornaciariPratiDetector(string configFile);
 	// EllipseDetector functions
@@ -69,6 +71,7 @@ private:
 	vector<Triplet> m_tripletsWithout_I, m_tripletsWithout_II, m_tripletsWithout_III, m_tripletsWithout_IV;
 	// середины арок
 	vector<std::pair<int, int>> m_arcsMidPoints[4];
+	Ellipses m_ellipses;
 
 	// для отладки
 	std::set<int> m_remainingArcsIdx[4];
@@ -76,4 +79,5 @@ private:
 	// consts for thresholding
 	const double SIMILARITY_WITH_LINE_THRESHOLD;
 	const double MINIMUM_ABOVE_UNDER_AREA_DIFFERENCE_RATIO;
+	const double SCORE_THRESHOLD;
 };

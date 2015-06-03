@@ -45,9 +45,9 @@ Point findCenterIVandI(int arcIV, int arcI, bool &errorFlag);
 int main(){
 	//src = ourImread(string("C:\\Диплом\\Images\\centerAt421_306.bmp"), CV_LOAD_IMAGE_GRAYSCALE);
 	//src = ourImread(string("C:\\Диплом\\Images\\тестовый круг.bmp"), CV_LOAD_IMAGE_GRAYSCALE);
-	//src = ourImread(string("C:\\Диплом\\Images\\test.bmp"), CV_LOAD_IMAGE_GRAYSCALE);
-	src = ourImread(string("C:\\Диплом\\Images\\test111.bmp"), CV_LOAD_IMAGE_GRAYSCALE);
-	EllipseDetector* detector = new FornaciariPratiDetector(4, 0.2);
+	src = ourImread(string("C:\\Диплом\\Images\\test.bmp"), CV_LOAD_IMAGE_GRAYSCALE);
+	//src = ourImread(string("C:\\Диплом\\Images\\test111.bmp"), CV_LOAD_IMAGE_GRAYSCALE);
+	EllipseDetector* detector = new FornaciariPratiDetector(0.5, 4, 0.2);
 	detector->DetectEllipses(src);
 
 	return 0;
