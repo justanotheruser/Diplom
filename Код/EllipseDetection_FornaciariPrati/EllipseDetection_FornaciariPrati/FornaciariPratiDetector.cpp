@@ -1,6 +1,7 @@
 #include "FornaciariPratiDetector.h"
 #include "HoughTransformAccumulator.h"
 #include "opencv2\highgui\highgui.hpp"
+#include "Utils.h"
 #define _USE_MATH_DEFINES
 #include <math.h>
 #include <tuple>
@@ -49,12 +50,12 @@ void displayImage(const char* title, const Mat& img, bool wait=false)
 }
 
 void drawArc(const Arc& arc, cv::Mat& canvas, uchar* color){
-		for(auto point : arc){
-			canvas.at<cv::Vec3b>(point)[0] = color[0];
-			canvas.at<cv::Vec3b>(point)[1] = color[1];
-			canvas.at<cv::Vec3b>(point)[2] = color[2];
-		}
+	for(auto point : arc){
+		canvas.at<cv::Vec3b>(point)[0] = color[0];
+		canvas.at<cv::Vec3b>(point)[1] = color[1];
+		canvas.at<cv::Vec3b>(point)[2] = color[2];
 	}
+}
 
 bool curvatureCondition(const Arc& firstArc, const Arc& secondArc)
 {
@@ -83,7 +84,7 @@ double findMajorAxis(const Arc& arc_1, const Arc& arc_2, const Arc& arc_3, const
 		y0 = (-(point.x - center.x)*K + point.y - center.y) / sqrt(K*K + 1);
 		double newAx = std::sqrt((x0*x0*N*N + y0*y0) / (N*N*(K*K + 1)));
 		// округление до тыс€чных
-		double rounded = floor(1000*newAx + 0.5) / 1000.0;
+		double rounded = ceil(1000*newAx + 0.5) / 1000.0;
 		acc.Add(rounded);
 	}
 	for (auto point : arc_2)
@@ -91,7 +92,7 @@ double findMajorAxis(const Arc& arc_1, const Arc& arc_2, const Arc& arc_3, const
 		x0 = (point.x - center.x + (point.y - center.y)*K) / sqrt(K*K + 1);
 		y0 = (-(point.x - center.x)*K + point.y - center.y) / sqrt(K*K + 1);
 		double newAx = std::sqrt((x0*x0*N*N + y0*y0) / (N*N*(K*K + 1)));
-		double rounded = floor(1000*newAx + 0.5) / 1000.0;
+		double rounded = ceil(1000*newAx + 0.5) / 1000.0;
 		acc.Add(rounded);
 	}
 	for (auto point : arc_3)
@@ -99,7 +100,7 @@ double findMajorAxis(const Arc& arc_1, const Arc& arc_2, const Arc& arc_3, const
 		x0 = (point.x - center.x + (point.y - center.y)*K) / sqrt(K*K + 1);
 		y0 = (-(point.x - center.x)*K + point.y - center.y) / sqrt(K*K + 1);
 		double newAx = std::sqrt((x0*x0*N*N + y0*y0) / (N*N*(K*K + 1)));
-		double rounded = floor(1000*newAx + 0.5) / 1000.0;
+		double rounded = ceil(1000*newAx + 0.5) / 1000.0;
 		acc.Add(rounded);
 	}
 	double Ax = acc.FindMax();
@@ -380,6 +381,9 @@ vector<Ellipse> FornaciariPratiDetector::DetectEllipses(const Mat& src)
 {
 	getSobelDerivatives(src);
 	useCannyDetector(); // TODO: реализовать детектор  енни самому с переиспользованием посчитанных собелей
+	blurEdges();
+
+
 	heuristicSearchOfArcs();
 	choosePossibleTriplets();
 	testTriplets();
@@ -434,9 +438,10 @@ void FornaciariPratiDetector::useCannyDetector()
 {
 	int cannyLowTreshold = 50;
 	double cannyHighLowtRatio = 2.5;
-	Canny(m_blurred, m_canny, cannyLowTreshold, cannyLowTreshold * cannyHighLowtRatio);
+	Canny(m_blurred, m_edges, cannyLowTreshold, cannyLowTreshold * cannyHighLowtRatio);
+	m_edges.copyTo(m_edgesCopy);
 #ifdef _DEBUG
-	displayImage("Canny", m_canny);
+	displayImage("Canny", m_edges);
 #endif
 }
 
@@ -449,13 +454,13 @@ void FornaciariPratiDetector::heuristicSearchOfArcs()
 		m_arcsInCoordinateQuarters[i].reserve(50);
 	}
 
-	int reservedArcSize = m_canny.cols * m_canny.rows / 2;
-	for(int row = 0; row < m_canny.rows; row++)
+	int reservedArcSize = m_edgesCopy.cols * m_edgesCopy.rows / 2;
+	for(int row = 0; row < m_edgesCopy.rows; row++)
 	{ 
-		uchar* p = m_canny.ptr(row);
+		uchar* p = m_edgesCopy.ptr(row);
 		short* sX = m_sobelX.ptr<short>(row); 
 		short* sY = m_sobelY.ptr<short>(row);
-		for(int col = 0; col < m_canny.cols; col++, p++, sX++, sY++) 
+		for(int col = 0; col < m_edgesCopy.cols; col++, p++, sX++, sY++) 
 		{
 			// start searching only from points with diagonal gradient
 			if(*p == 255 && *sX != 0 && *sY != 0)
@@ -517,7 +522,7 @@ void FornaciariPratiDetector::heuristicSearchOfArcs()
 		}
 	}
 #ifdef _DEBUG
-	Mat result = Mat::zeros(m_canny.rows, m_canny.cols, CV_8UC3);
+	Mat result = Mat::zeros(m_edgesCopy.rows, m_edgesCopy.cols, CV_8UC3);
 	uchar arcColor[4][3] = {{0, 0, 255}, {0, 255, 0}, {255, 0, 0}, {0, 255, 255}};
 	for(int i = 0; i < 4; i++)
 		for (auto arc : m_arcsInCoordinateQuarters[i])
@@ -533,29 +538,29 @@ void FornaciariPratiDetector::findArcThatIncludesPoint(int x, int y, int dx, Arc
 	int looksLikeHorizontalLine = 0, looksLikeVerticalLine = 0;
 
 	arc.emplace_back(x, y);
-	m_canny.at<uchar>(Point(x, y)) = 0;
+	m_edgesCopy.at<uchar>(Point(x, y)) = 0;
 	Point newPoint, lastPoint;
 	do // ищем новые точки дуги cбоку-по диагонали-снизу пока не перестанем находить
 	{
 		newPoint = lastPoint = arc.back();
 		// если упЄрлись в нижнюю границу, то у этой точки нет нижней и диагональной соседей
-		if (lastPoint.y + 1 <= m_canny.rows-1)
+		if (lastPoint.y + 1 <= m_edgesCopy.rows-1)
 		{
 			// строго вниз
 			newPoint = lastPoint + Point(0, 1);
-			if (isEdgePoint(newPoint))
+			if (isEdgePoint(m_edgesCopy, newPoint))
 				arc.push_back(newPoint);
 			else if (lastPoint.x - 1 >= 0)
 			{
 				// диагональна€ точка
 				newPoint = lastPoint + Point(dx, 1);
-				if (isEdgePoint(newPoint))
+				if (isEdgePoint(m_edgesCopy, newPoint))
 					arc.push_back(newPoint);
 				else
 				{
 					// строго по горизонтали 
 					newPoint = lastPoint + Point(dx, 0);
-					if (isEdgePoint(newPoint))
+					if (isEdgePoint(m_edgesCopy,newPoint))
 						arc.push_back(newPoint);
 				}
 			}
@@ -564,7 +569,7 @@ void FornaciariPratiDetector::findArcThatIncludesPoint(int x, int y, int dx, Arc
 		{
 			// строго по горизонтали
 			newPoint = lastPoint + Point(dx, 0);
-			if (isEdgePoint(newPoint))
+			if (isEdgePoint(m_edgesCopy,newPoint))
 				arc.push_back(newPoint);
 		}
 	} while(lastPoint != arc.back());
@@ -602,7 +607,6 @@ void FornaciariPratiDetector::choosePossibleTriplets(){
 		m_possibleIVandI.clear();   m_possibleIVandI.reserve(numArcsIV*numArcsI);
 	}
 	// сначала выбираем совместные пары
-	Mat curvatureConditionMat = Mat::zeros(m_canny.rows, m_canny.cols, CV_8UC3);
 	int cond1 = 0, cond2 = 0;
 	for(int aI = 0; aI < numArcsI; aI++){ 
 		for(int aII = 0; aII < numArcsII; aII++)
@@ -610,10 +614,10 @@ void FornaciariPratiDetector::choosePossibleTriplets(){
 			// aI должна быть правее aII
 			if(m_arcsInCoordinateQuarters[1][aII].front().x <= m_arcsInCoordinateQuarters[0][aI].front().x)
 			{
-				if(curvatureCondition(m_arcsInCoordinateQuarters[0][aI], m_arcsInCoordinateQuarters[1][aII]))
-				{
+				//if(curvatureCondition(m_arcsInCoordinateQuarters[0][aI], m_arcsInCoordinateQuarters[1][aII]))
+				//{
 					m_possibleIandII.emplace_back(aI, aII);
-				}
+				//}
 			}
 		}
 	}
@@ -624,7 +628,7 @@ void FornaciariPratiDetector::choosePossibleTriplets(){
 			if(m_arcsInCoordinateQuarters[2][aIII].front().y >= m_arcsInCoordinateQuarters[1][aII].back().y)
 			{
 				
-				if(curvatureCondition(m_arcsInCoordinateQuarters[1][aII], m_arcsInCoordinateQuarters[2][aIII]))
+				//if(curvatureCondition(m_arcsInCoordinateQuarters[1][aII], m_arcsInCoordinateQuarters[2][aIII]))
 					m_possibleIIandIII.emplace_back(aII, aIII);
 			}
 		}
@@ -635,7 +639,7 @@ void FornaciariPratiDetector::choosePossibleTriplets(){
 			// aIII должна быть левее aIV
 			if(m_arcsInCoordinateQuarters[2][aIII].back().x <= m_arcsInCoordinateQuarters[3][aIV].back().x)
 			{
-				if(curvatureCondition(m_arcsInCoordinateQuarters[2][aIII], m_arcsInCoordinateQuarters[3][aIV]))
+				//if(curvatureCondition(m_arcsInCoordinateQuarters[2][aIII], m_arcsInCoordinateQuarters[3][aIV]))
 					m_possibleIIIandIV.emplace_back(aIII, aIV);
 			}
 		}
@@ -645,7 +649,7 @@ void FornaciariPratiDetector::choosePossibleTriplets(){
 		{
 			// aIV должна быть ниже aI
 			if(m_arcsInCoordinateQuarters[3][aIV].front().y >= m_arcsInCoordinateQuarters[0][aI].back().y)
-				if(curvatureCondition(m_arcsInCoordinateQuarters[3][aIV], m_arcsInCoordinateQuarters[0][aI]))
+				//if(curvatureCondition(m_arcsInCoordinateQuarters[3][aIV], m_arcsInCoordinateQuarters[0][aI]))
 					m_possibleIVandI.emplace_back(aIV, aI);
 		}
 	}
@@ -729,7 +733,7 @@ void FornaciariPratiDetector::choosePossibleTriplets(){
 		m_remainingArcsIdx[2].insert(triplet[2]);
 	}
 
-	Mat result = Mat::zeros(m_canny.rows, m_canny.cols, CV_8UC3);
+	Mat result = Mat::zeros(m_edgesCopy.rows, m_edgesCopy.cols, CV_8UC3);
 	for (int q = 0; q < 4; q++)
 		for (int i : m_remainingArcsIdx[q])
 			drawArc(m_arcsInCoordinateQuarters[q][i], result, arcColor[q]);
@@ -737,9 +741,9 @@ void FornaciariPratiDetector::choosePossibleTriplets(){
 #endif
 }
 
-inline bool FornaciariPratiDetector::isEdgePoint(const Point& point)
+inline bool FornaciariPratiDetector::isEdgePoint(Mat& edges, const Point& point)
 {
-	uchar* volume = m_canny.ptr(point.y);
+	uchar* volume = edges.ptr(point.y);
 	volume += point.x;
 	if (*volume > 0){
 		*volume = 0;
@@ -752,7 +756,7 @@ void FornaciariPratiDetector::testTriplets()
 {
 	for(auto triplet : m_tripletsWithout_IV)
 	{
-		/*Mat chords = Mat::zeros(m_canny.rows, m_canny.cols, CV_8UC3);
+		Mat chords = Mat::zeros(m_edges.rows, m_edges.cols, CV_8UC3);
 		Arc arcI = m_arcsInCoordinateQuarters[0][triplet[0]];
 		Arc arcII = m_arcsInCoordinateQuarters[1][triplet[1]];
 		Arc arcIII = m_arcsInCoordinateQuarters[2][triplet[2]];
@@ -790,13 +794,24 @@ void FornaciariPratiDetector::testTriplets()
 		double roInDegrees = ro/M_PI * 180;
 		std::cout << "roInDegrees " << roInDegrees << std::endl;
 		std::cout << "A " << A << " B " << B << std::endl;
-		ellipse(chords, center, Size(A, B), roInDegrees, 0, 360, Scalar(0, 0, 255));
-		displayImage("Chords", chords);*/
+		//ellipse(chords, center, Size(A, B), roInDegrees, 0, 360, Scalar(0, 0, 255));
+		vector<Point> ellipseRestored;
+		ellipse2PolyOpt(center, Size(A, B), roInDegrees, ellipseRestored);
+		for (auto point : ellipseRestored)
+		{
+			chords.at<cv::Vec3b>(point)[2] = 255;
+		}
+		vector<Point> ellipsePoints;
+		polyLines2Points(chords, &ellipseRestored[0], ellipseRestored.size(), ellipsePoints);
+		int arcsLength = arcI.size() + arcII.size() + arcIII.size();
+		double score = scoreForEllipse(ellipsePoints, arcsLength);
+		std::cout << "score = " << score << std::endl;
+		displayImage("Chords", chords);
 	}
 
 	for(auto triplet : m_tripletsWithout_III)
 	{
-	    /*Mat chords = Mat::zeros(m_canny.rows, m_canny.cols, CV_8UC3);
+	    /*Mat chords = Mat::zeros(m_edges.rows, m_edges.cols, CV_8UC3);
 		Arc arcI = m_arcsInCoordinateQuarters[0][triplet[0]];
 		Arc arcII = m_arcsInCoordinateQuarters[1][triplet[1]];
 		Arc arcIV = m_arcsInCoordinateQuarters[3][triplet[2]];
@@ -840,7 +855,7 @@ void FornaciariPratiDetector::testTriplets()
 
 	for(auto triplet : m_tripletsWithout_II)
 	{
-	    /*Mat chords = Mat::zeros(m_canny.rows, m_canny.cols, CV_8UC3);
+	    /*Mat chords = Mat::zeros(m_edges.rows, m_edges.cols, CV_8UC3);
 		Arc arcI = m_arcsInCoordinateQuarters[0][triplet[0]];
 		Arc arcIII = m_arcsInCoordinateQuarters[2][triplet[1]];
 		Arc arcIV = m_arcsInCoordinateQuarters[3][triplet[2]];
@@ -884,7 +899,7 @@ void FornaciariPratiDetector::testTriplets()
 
 	for(auto triplet : m_tripletsWithout_I)
 	{
-		/*Mat chords = Mat::zeros(m_canny.rows, m_canny.cols, CV_8UC3);
+		/*Mat chords = Mat::zeros(m_edges.rows, m_edges.cols, CV_8UC3);
 		Arc arcII = m_arcsInCoordinateQuarters[1][triplet[0]];
 		Arc arcIII = m_arcsInCoordinateQuarters[2][triplet[1]];
 		Arc arcIV = m_arcsInCoordinateQuarters[3][triplet[2]];
@@ -926,3 +941,59 @@ void FornaciariPratiDetector::testTriplets()
 		displayImage("Chords", chords);*/
 	}
 }
+
+// отношение числа точек предполагаемого эллипса, попавших на какую-то границу,
+// к суммарной длине трЄх дуг, по которым он построен
+double FornaciariPratiDetector::scoreForEllipse(const vector<Point>& ellipsePoints, int arcsLength) const
+{
+	double accum = 0;
+	for (auto ellipsePoint : ellipsePoints)
+	{
+		int volume = m_blurredEdges.at<uchar>(ellipsePoint);
+		if (volume == 255)
+			accum++;
+		else if (volume == 127)
+			accum+=0.5;
+	}
+	return accum / arcsLength;
+}
+
+void FornaciariPratiDetector::blurEdges()
+{
+	m_edges.copyTo(m_blurredEdges);
+	// избегаем краЄв, таким образом избегаем и дополнительных проверок внутри циклов
+	for(int row = 1; row < m_blurredEdges.rows-1; row++)
+	{ 
+		uchar* pixelAtPrevRow = m_blurredEdges.ptr(row-1);
+		uchar* pixelAtCurRow = m_blurredEdges.ptr(row);
+		uchar* pixelAtNextRow = m_blurredEdges.ptr(row+1);
+		for(int col = 1; col < m_blurredEdges.cols-1; col++, pixelAtPrevRow++, pixelAtCurRow++, pixelAtNextRow++)
+		{
+			if (*pixelAtCurRow == 255)
+			{
+				if (*pixelAtPrevRow == 0)
+					*pixelAtPrevRow = 127;
+				if (*(pixelAtPrevRow-1) == 0)
+					*(pixelAtPrevRow-1) = 127;
+				if (*(pixelAtPrevRow+1) == 0)
+					*(pixelAtPrevRow+1) = 127;
+
+				if (*(pixelAtCurRow-1) == 0)
+					*(pixelAtCurRow-1) = 127;
+				if (*(pixelAtCurRow+1) == 0)
+					*(pixelAtCurRow+1) = 127;
+
+				if (*pixelAtNextRow == 0)
+					*pixelAtNextRow = 127;
+				if (*(pixelAtNextRow-1) == 0)
+					*(pixelAtNextRow-1) = 127;
+				if (*(pixelAtNextRow+1) == 0)
+					*(pixelAtNextRow+1) = 127;
+			}
+        }
+    }
+}
+
+// отношение числа точек трЄх дуг, по которым построен эллипс, попавших на этот эллипс, 
+// к общему числу этих точек
+//double FornaciariPratiDetector::scoreForEllipse_2(const vector<Point>& ellipsePoints, int arcsLength) const

@@ -1,6 +1,5 @@
 #include "EllipseDetector.h"
 #include <list>
-#include <set>
 #include <iostream>
 #pragma once
 
@@ -47,15 +46,19 @@ private:
 	void useCannyDetector();
 	void heuristicSearchOfArcs();
 	void choosePossibleTriplets();
-	inline bool isEdgePoint(const Point& point);
+	inline bool isEdgePoint(Mat& edges, const Point& point);
 	// dx shows whether this arc goes down to the right (I or III quarters) or left (II or IV quarters)
 	void findArcThatIncludesPoint(int i_x, int i_y, int i_dx, Arc& o_arc);
 	int calculateSquareUnderArc(const Arc& arc) const;
+	double FornaciariPratiDetector::scoreForEllipse(const vector<Point>& ellipsePoints, int arcsLength) const;
 	void testTriplets();
+	void blurEdges();
 private:
 	int m_sobelKernelSize;
 	Mat m_sobelX, m_sobelY; // should use CS_16S
-	Mat m_canny;
+	Mat m_edges;
+	Mat m_edgesCopy;
+	Mat m_blurredEdges;
 	int m_blurKernelSize;
 	int m_blurSigma;
 	Mat m_blurred; // TODO: delete it after implementing my own canny detector
