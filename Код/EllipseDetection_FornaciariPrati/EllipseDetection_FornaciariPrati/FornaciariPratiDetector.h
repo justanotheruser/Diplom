@@ -60,10 +60,14 @@ private:
 	void blurEdges();
 	bool getScore(const vector<Point>& ellipsePoints, const Arc& arc1,
 					  const Arc& arc2, const Arc& arc3);
+	bool isSimilar(const Ellipse& e1, const Ellipse& e2) const;
+	void ellipsesClustering();
 private:
 	int m_sobelKernelSize;
 	Mat m_sobelX, m_sobelY; // should use CS_16S
 	Mat m_edges;
+	int m_imgWidth;
+	int m_imgHeight;
 	Mat m_edgesCopy;
 	Mat m_blurredEdges;
 	int m_blurKernelSize;
@@ -76,8 +80,8 @@ private:
 	vector<Triplet> m_tripletsWithout_I, m_tripletsWithout_II, m_tripletsWithout_III, m_tripletsWithout_IV;
 	// середины арок
 	vector<std::pair<int, int>> m_arcsMidPoints[4];
-	Ellipses m_ellipses;
-
+	Ellipses m_allDetectedEllipses;
+	Ellipses m_uniqueEllipses;
 	// для отладки
 	std::set<int> m_remainingArcsIdx[4];
 

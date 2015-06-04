@@ -1,11 +1,11 @@
 #include "Ellipse.h"
+#define _USE_MATH_DEFINES
+#include <math.h>
 
 Ellipse::Ellipse(Point center, Size axes, double angle) 
-	: m_center(center)
-	, m_angle(angle)
-	, m_axes(axes) 
+	: m_center(center), m_angle(angle), m_axes(axes)
 {
-
+	m_angleInDegrees = m_angle/M_PI * 180;
 }
 
 
@@ -108,7 +108,7 @@ void sincos( int angle, float& cosval, float& sinval )
 // её более узкое использование в нашей программе
 void Ellipse::getEllipseReferencePoints(vector<Point>& referencePoints)
 {
-	int _angle = cvRound(m_angle);
+	int _angle = cvRound(m_angleInDegrees);
 	while(_angle < 0)
         _angle += 360;
     while(_angle > 360)

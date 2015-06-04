@@ -387,6 +387,8 @@ FornaciariPratiDetector::FornaciariPratiDetector(double scoreThreshold,
 vector<Ellipse> FornaciariPratiDetector::DetectEllipses(const Mat& src)
 {
 	getSobelDerivatives(src);
+	m_imgWidth = src.size().width;
+	m_imgHeight = src.size().height;
 	useCannyDetector(); // TODO: реализовать детектор Кенни самому с переиспользованием посчитанных собелей
 	blurEdges();
 
@@ -396,65 +398,14 @@ vector<Ellipse> FornaciariPratiDetector::DetectEllipses(const Mat& src)
 	testTriplets();
 
 	Mat ellipsesImg = Mat::zeros(m_edgesCopy.rows, m_edgesCopy.cols, CV_8UC3);
-	for (auto e : m_ellipses)
+	
+	ellipsesClustering();
+	std::cout << m_allDetectedEllipses.size() << " " << m_uniqueEllipses.size() << "\n\n";
+	for (auto e : m_allDetectedEllipses)
 	{
 		Scalar color(55 + rand() % 200, 55 + rand() % 200, 55 + rand() % 200);
 		e.DrawOnImage(ellipsesImg, color);
 	}
-
-	/*const Arc& arcI = m_arcsInCoordinateQuarters[0][1];
-	const Arc& arcIII = m_arcsInCoordinateQuarters[2][0];
-	const Arc& arcIV = m_arcsInCoordinateQuarters[3][0];
-
-	Mat test = Mat::zeros(m_edgesCopy.rows, m_edgesCopy.cols, CV_8UC3);
-	drawArc(arcI, test, arcColor[0]);
-	drawArc(arcIII, test, arcColor[2]);
-	drawArc(arcIV, test, arcColor[3]);
-	
-		
-	std::tuple<double, int> line_34, line_43, line_14, line_41;
-	line_34 = findLineCrossingMidpointBetweenHorizontalArcs(arcIII, arcIV);
-	line_43 = findLineCrossingMidpointBetweenHorizontalArcs(arcIV, arcIII);
-	line_14 = findLineCrossingMidpointBetweenUpperAndLowerArcs(arcI, arcIV);
-	line_41 = findLineCrossingMidpointBetweenLowerAndUpperArcs(arcIV, arcI);
-	Point intersection_1 = findIntersection(line_34, line_43);
-	Point intersection_2 = findIntersection(line_14, line_41);
-
-	line(test, Point(0, std::get<1>(line_34)), Point(600, 600*std::get<0>(line_34) + std::get<1>(line_34)), Scalar(0, 0, 255));
-	line(test, Point(0, std::get<1>(line_43)), Point(600, 600*std::get<0>(line_43) + std::get<1>(line_43)), Scalar(255, 0, 0));
-	displayImage("Test", test);
-	std::cout << intersection_1 << " " << intersection_2 << "\n";
-
-	double q1, q2, q3, q4;
-	q1 = static_cast<double>((arcIV[arcIV.size()-1].y - arcIII[arcIII.size()/2].y)) / 
-		 (arcIV[arcIV.size()-1].x - arcIII[arcIII.size()/2].x);
-	q2 = std::get<0>(line_43);
-	q3 = static_cast<double>((arcIV[arcIV.size()/2].y - arcI[0].y)) / 
-		 (arcIV[arcIV.size()/2].x - arcI[0].x);
-	q4 = std::get<0>(line_14);
-	double N, K, ro;
-	std::tie(N, K, ro) = getEllipseParams(q1, q2, q3, q4);
-
-	Point center((intersection_1.x + intersection_2.x) / 2,
-				 (intersection_1.y  + intersection_2.y) / 2);
-	int A = findMajorAxis(arcI, arcIII, arcIV, center, N, K);
-	double B = A * N;
-	double roInDegrees = ro/M_PI * 180;
-	std::cout << "Center: " << center << std::endl;
-	std::cout << "roInDegrees " << roInDegrees << std::endl;
-	std::cout << "A " << A << " B " << B << std::endl;
-
-	Ellipse ellipse(center, Size(A, B), roInDegrees);
-	vector<Point> ellipsePoints = ellipse.FindEllipsePoints(m_edges.size());
-	int arcsLength = arcI.size() + arcIII.size() + arcIV.size();
-	double score = scoreForEllipse_2(ellipsePoints, arcI, arcIII, arcIV); //scoreForEllipse(ellipsePoints, arcsLength);
-	//std::cout << "score = " << score << "\n\n";
-	if (score > SCORE_THRESHOLD)
-	{
-		if (scoreForEllipse(ellipsePoints, arcsLength) > SECOND_THRESHOLD)
-			m_ellipses.push_back(ellipse);
-	}
-	*/
 
 	displayImage("Result", ellipsesImg);
 	waitKey(0);
@@ -869,20 +820,22 @@ void FornaciariPratiDetector::testTriplets()
 					 (intersection_1.y  + intersection_2.y) / 2);
 		int A = findMajorAxis(arcI, arcII, arcIII, center, N, K);
 		double B = A * N;
-		double roInDegrees = ro/M_PI * 180;
 		/*std::cout << "Center: " << center << std::endl;Fsc
 		std::cout << "roInDegrees " << roInDegrees << std::endl;
 		std::cout << "A " << A << " B " << B << std::endl;*/
 
 		// находим точки, принадлежащие предполагаемому эллипсу, и проверяем
 		// его на правдоподобность
-		Ellipse ellipse(center, Size(A, B), roInDegrees);
+		Ellipse ellipse(center, Size(A, B), ro);
 		vector<Point> ellipsePoints = ellipse.FindEllipsePoints(m_edges.size());
+		double score_1 = scoreForEllipse(ellipsePoints);
+		double score_2 = scoreForEllipse_2(ellipsePoints, arcI, arcII, arcIII);
 		if (getScore(ellipsePoints, arcI, arcII, arcIII))
 		{
-			m_ellipses.push_back(ellipse);
+			ellipse.m_score1 = score_1;
+			ellipse.m_score2 = score_2;
+			m_allDetectedEllipses.push_back(ellipse);
 		}
-		
 		/*Mat result = Mat::zeros(m_edgesCopy.rows, m_edgesCopy.cols, CV_8UC3);
 		drawArc(arcI, result, arcColor[0]);
 		drawArc(arcII, result, arcColor[1]);
@@ -928,16 +881,19 @@ void FornaciariPratiDetector::testTriplets()
 					 (intersection_1.y  + intersection_2.y) / 2);
 		int A = findMajorAxis(arcI, arcII, arcIV, center, N, K);
 		double B = A * N;
-		double roInDegrees = ro/M_PI * 180;
 		/*std::cout << "Center: " << center << std::endl;
 		std::cout << "roInDegrees " << roInDegrees << std::endl;
 		std::cout << "A " << A << " B " << B << std::endl;*/
 
-		Ellipse ellipse(center, Size(A, B), roInDegrees);
+		Ellipse ellipse(center, Size(A, B), ro);
 		vector<Point> ellipsePoints = ellipse.FindEllipsePoints(m_edges.size());
+		double score_1 = scoreForEllipse(ellipsePoints);
+		double score_2 = scoreForEllipse_2(ellipsePoints, arcI, arcII, arcIV);
 		if (getScore(ellipsePoints, arcI, arcII, arcIV))
 		{
-			m_ellipses.push_back(ellipse);
+			ellipse.m_score1 = score_1;
+			ellipse.m_score2 = score_2;
+			m_allDetectedEllipses.push_back(ellipse);
 		}
 		/*Mat result = Mat::zeros(m_edgesCopy.rows, m_edgesCopy.cols, CV_8UC3);
 		drawArc(arcI, result, arcColor[0]);
@@ -984,16 +940,19 @@ void FornaciariPratiDetector::testTriplets()
 					 (intersection_1.y  + intersection_2.y) / 2);
 		int A = findMajorAxis(arcI, arcIII, arcIV, center, N, K);
 		double B = A * N;
-		double roInDegrees = ro/M_PI * 180;
 		/*std::cout << "Center: " << center << std::endl;
 		std::cout << "roInDegrees " << roInDegrees << std::endl;
 		std::cout << "A " << A << " B " << B << std::endl;*/
 
-		Ellipse ellipse(center, Size(A, B), roInDegrees);
+		Ellipse ellipse(center, Size(A, B), ro);
 		vector<Point> ellipsePoints = ellipse.FindEllipsePoints(m_edges.size());
+		double score_1 = scoreForEllipse(ellipsePoints);
+		double score_2 = scoreForEllipse_2(ellipsePoints, arcI, arcIII, arcIV);
 		if (getScore(ellipsePoints, arcI, arcIII, arcIV))
 		{
-			m_ellipses.push_back(ellipse);
+			ellipse.m_score1 = score_1;
+			ellipse.m_score2 = score_2;
+			m_allDetectedEllipses.push_back(ellipse);
 		}
 
 		/*Mat result = Mat::zeros(m_edgesCopy.rows, m_edgesCopy.cols, CV_8UC3);
@@ -1041,16 +1000,19 @@ void FornaciariPratiDetector::testTriplets()
 					 (intersection_1.y  + intersection_2.y) / 2);
 		int A = findMajorAxis(arcII, arcIII, arcIV, center, N, K);
 		double B = A * N;
-		double roInDegrees = ro/M_PI * 180;
 		/*std::cout << "Center: " << center << std::endl;
 		std::cout << "roInDegrees " << roInDegrees << std::endl;
 		std::cout << "A " << A << " B " << B << std::endl;*/
 
-		Ellipse ellipse(center, Size(A, B), roInDegrees);
+		Ellipse ellipse(center, Size(A, B), ro);
 		vector<Point> ellipsePoints = ellipse.FindEllipsePoints(m_edges.size());
+		double score_1 = scoreForEllipse(ellipsePoints);
+		double score_2 = scoreForEllipse_2(ellipsePoints, arcII, arcIII, arcIV);
 		if (getScore(ellipsePoints, arcII, arcIII, arcIV))
 		{
-			m_ellipses.push_back(ellipse);
+			ellipse.m_score1 = score_1;
+			ellipse.m_score2 = score_2;
+			m_allDetectedEllipses.push_back(ellipse);
 		}
 
 		/*Mat result = Mat::zeros(m_edgesCopy.rows, m_edgesCopy.cols, CV_8UC3);
@@ -1163,11 +1125,51 @@ bool FornaciariPratiDetector::getScore(const vector<Point>& ellipsePoints, const
 	double BORDER = 0.25;
 	if (weight_2 < 0.48)
 		BORDER = 0.36;
-	if (score_2 > BORDER && score_1 > 0.40 || score_1 > 0.7)
+	//if (score_2 > BORDER && score_1 > 0.40 || score_1 > 0.7)
+	if (score_2 > 0.5 || score_1 > 0.7)
 	{
 		std::cout << ellipsePoints.size() << " " << weight_2 << " " << score_2 << " " << score_1 << "\n";
 		return true;
 	}
 	return false;
 	
+}
+
+
+bool FornaciariPratiDetector::isSimilar(const Ellipse& e1, const Ellipse& e2) const
+{
+	double DTx = 0.1, DTy = 0.1, DTa = 0.1, DTb = 0.1, DTtheta = 0.1;
+	double Dx = abs(e1.m_center.x - e2.m_center.x) / static_cast<double>(m_imgWidth);
+	double Dy = abs(e1.m_center.y - e2.m_center.y) / static_cast<double>(m_imgHeight);
+	double Da = abs(e1.m_axes.width - e2.m_axes.width) / 
+				static_cast<double>(max(e1.m_axes.width, e2.m_axes.width));
+	double Db = abs(e1.m_axes.height - e2.m_axes.height) / 
+				static_cast<double>(max(e1.m_axes.height, e2.m_axes.height));
+	double Dtheta = abs(sin(abs(e1.m_angle - e2.m_angle)));
+	return Dx < DTx && Dy < DTy && Da < DTa && Db < DTb && Dtheta < DTtheta;
+}
+
+void FornaciariPratiDetector::ellipsesClustering()
+{
+	// сравниваем эллипс со всеми главными представителями кластеров
+	// если похожих не найдено, помещаем эллипс в коллекцию главных представителей
+	// иначе сравниваем количество очков
+		// если очков больше у главного представителя кластера, то продолжаем
+		// иначе заменяем заменяем главного представителя кластера
+	for (const auto e : m_allDetectedEllipses)
+	{
+		bool newUnique = true;
+		for (int cluster = 0; cluster < m_uniqueEllipses.size(); cluster++)
+		{
+			if (isSimilar(e, m_uniqueEllipses[cluster]))
+			{
+				newUnique = false;
+				if (m_uniqueEllipses[cluster].m_score1 < e.m_score1)
+					m_uniqueEllipses[cluster] = e;
+				break;
+			}
+		}
+		if (newUnique)
+			m_uniqueEllipses.push_back(e);
+	}
 }
