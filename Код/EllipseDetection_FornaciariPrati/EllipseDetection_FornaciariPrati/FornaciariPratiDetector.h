@@ -63,6 +63,8 @@ private:
 	bool isSimilar(const Ellipse& e1, const Ellipse& e2) const;
 	void ellipsesClustering();
 private:
+	Mat m_src;
+	Mat m_greyscale;
 	int m_sobelKernelSize;
 	Mat m_sobelX, m_sobelY; // should use CS_16S
 	Mat m_edges;

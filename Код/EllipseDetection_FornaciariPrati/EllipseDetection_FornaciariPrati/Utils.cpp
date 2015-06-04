@@ -55,3 +55,44 @@
 	}
 	return *lowerBound;
 }
+
+ // сохраняем правильно распознанные на данном изображении эллипсы в базу
+ // вводим индексы эллипсов, конец ввода - Ctrl+Z или не-число
+ void saveEllipses(const std::vector<Ellipse>& ellipses, const std::string& imgName, const Size& imgSize)
+ {
+	 int i;
+	 std::ofstream out("C:\\Диплом\\Images\\калибровка\\db.txt", std::ios_base::app);
+	 out << imgName << " " << imgSize.width << " " << imgSize.height << std::endl;
+	 std::vector<int> indexes;
+	 while (std::cin >> i)
+	 {
+		 indexes.push_back(i);
+	 }
+	 out << indexes.size() << std::endl;
+	 for (auto idx : indexes)
+		 out << ellipses[idx];
+	 out << std::endl;
+	 out.close();
+ }
+
+void loadEllipses(std::map<std::string, std::pair<Size, std::vector<Ellipse>>>& ellipses)
+{
+	std::ifstream in("C:\\Диплом\\Images\\калибровка\\db.txt");
+	std::string imgName;
+	int numberOfEllipses;
+	Ellipse e;
+
+	while (in >> imgName)
+	{
+		auto& thisImgEllipses = ellipses[imgName];
+		in >> thisImgEllipses.first.width >> thisImgEllipses.first.height;
+		in >> numberOfEllipses;
+		for (int i = 0; i < numberOfEllipses; i++)
+		{
+			in >> e;
+			e.SetImgSize(thisImgEllipses.first);
+			thisImgEllipses.second.push_back(e);
+		}
+	}
+
+}

@@ -2,10 +2,10 @@
 #define _USE_MATH_DEFINES
 #include <math.h>
 
-Ellipse::Ellipse(Point center, Size axes, double angle) 
+Ellipse::Ellipse(const Point& center, const Size& axes, double angle, const Size& imgSize) 
 	: m_center(center), m_angle(angle), m_axes(axes)
 {
-	m_angleInDegrees = m_angle/M_PI * 180;
+	findEllipsePoints(imgSize);
 }
 
 
@@ -108,7 +108,7 @@ void sincos( int angle, float& cosval, float& sinval )
 // её более узкое использование в нашей программе
 void Ellipse::getEllipseReferencePoints(vector<Point>& referencePoints)
 {
-	int _angle = cvRound(m_angleInDegrees);
+	int _angle = cvRound(m_angle/M_PI * 180);
 	while(_angle < 0)
         _angle += 360;
     while(_angle > 360)
@@ -190,8 +190,9 @@ void getPointsInLineBetween(const Point& p0, const Point& p1, Size imgSize, vect
 	}
 }
 
-vector<Point> Ellipse::FindEllipsePoints(Size imgSize)
+void Ellipse::findEllipsePoints(const Size& imgSize)
 {
+	m_ellipsePoints.resize(0);
     vector<Point> referencePoints;
 	getEllipseReferencePoints(referencePoints);
 	int i = referencePoints.size() - 1;
@@ -202,10 +203,28 @@ vector<Point> Ellipse::FindEllipsePoints(Size imgSize)
 		getPointsInLineBetween(p, p0, imgSize, m_ellipsePoints);
         p0 = p;
     }
-	return m_ellipsePoints;
 }
 
 vector<Point> Ellipse::GetEllipsePoints()
 {
 	return m_ellipsePoints;
+}
+
+void Ellipse::SetImgSize(const Size& imgSize)
+{
+	findEllipsePoints(imgSize);
+}
+
+std::ostream & operator<<(std::ostream & os, const Ellipse& e)
+{
+	os << e.m_center.x << " " << e.m_center.y << " " << e.m_axes.width << " "
+		<< e.m_axes.height << " " << e.m_angle << std::endl;
+	return os;
+}
+
+std::istream & operator>>(std::istream & is, Ellipse& e)
+{
+	is >> e.m_center.x >> e.m_center.y >> e.m_axes.width 
+	   >> e.m_axes.height >> e.m_angle;
+	return is;
 }

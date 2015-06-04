@@ -43,7 +43,7 @@ Point findCenterIIIandIV(int arcIII, int arcI, bool &errorFlag);
 Point findCenterIVandI(int arcIV, int arcI, bool &errorFlag);
 
 int main(){
-	src = ourImread(string("C:\\Диплом\\Images\\roadsign0.jpg"), CV_LOAD_IMAGE_GRAYSCALE);
+	src = ourImread(string("C:\\Диплом\\Images\\калибровка\\3.jpg"), CV_LOAD_IMAGE_COLOR);
 	//src = ourImread(string("C:\\Диплом\\Images\\Светофор_2.jpg"), CV_LOAD_IMAGE_GRAYSCALE);
 	//src = ourImread(string("C:\\Диплом\\Images\\roadsign1.jpg"), CV_LOAD_IMAGE_GRAYSCALE);
 	//src = ourImread(string("C:\\Диплом\\Images\\stop.jpg"), CV_LOAD_IMAGE_GRAYSCALE);
