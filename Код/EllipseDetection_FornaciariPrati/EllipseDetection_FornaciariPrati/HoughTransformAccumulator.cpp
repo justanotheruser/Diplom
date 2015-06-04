@@ -1,5 +1,5 @@
 #include "HoughTransformAccumulator.h"
-
+#include <iostream>
 
 void HoughTransformAccumulator::Add(double value)
 {

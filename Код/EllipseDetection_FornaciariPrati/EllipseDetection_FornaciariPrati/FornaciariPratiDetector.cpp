@@ -11,8 +11,9 @@ using std::string;
 using std::list;
 
 uchar arcColor[4][3] = {{0, 0, 255}, {0, 255, 0}, {255, 0, 0}, {0, 255, 255}};
-const int sc_maxDiscrepancyForParallels = 150;
-const int sc_doubledNumberOfChords = 10;
+const int sc_maxDiscrepancyForParallels = 100;
+const int sc_doubledNumberOfChords = 20;
+const double SECOND_THRESHOLD = 0.7;
 
 double getSlope(const std::vector<Point>& midPoints)
 {
@@ -23,10 +24,13 @@ double getSlope(const std::vector<Point>& midPoints)
 	{
 	   double xDiff = midPoints[i].x - midPoints[i + middle].x;
 	   double yDiff = midPoints[i].y - midPoints[i + middle].y;
-	   slope +=  yDiff / xDiff;
+	   if (xDiff != 0)
+		  slope +=  yDiff / xDiff;
 	}
-	slope /= i;
-	return slope;
+	if (i > 0)
+		return slope / i;
+	else
+		return INT_MAX;
 }
 
 Point getAveragePoint(const std::vector<Point>& midPoints)
@@ -57,7 +61,7 @@ void drawArc(const Arc& arc, cv::Mat& canvas, uchar* color){
 	}
 }
 
-bool curvatureCondition(const Arc& firstArc, const Arc& secondArc)
+bool FornaciariPratiDetector::curvatureCondition(const Arc& firstArc, const Arc& secondArc)
 {
 	Point firstMidPoint = findArcMiddlePoint(firstArc);
 	Point secondMidPoint = findArcMiddlePoint(secondArc);
@@ -74,6 +78,7 @@ bool curvatureCondition(const Arc& firstArc, const Arc& secondArc)
 					   (firstCenterY-secondMidPoint.y)*(firstCenterY-secondMidPoint.y);
 	double distance2 = (secondCenterX-firstMidPoint.x)*(secondCenterX-firstMidPoint.x) + 
 					   (secondCenterY-firstMidPoint.y)*(secondCenterY-firstMidPoint.y);
+
 	if (midPointsDist > distance1 && midPointsDist > distance2)
 		return true;
 	return false;
@@ -88,25 +93,21 @@ double findMajorAxis(const Arc& arc_1, const Arc& arc_2, const Arc& arc_3, const
 		x0 = (point.x - center.x + (point.y - center.y)*K) / sqrt(K*K + 1);
 		y0 = (-(point.x - center.x)*K + point.y - center.y) / sqrt(K*K + 1);
 		double newAx = std::sqrt((x0*x0*N*N + y0*y0) / (N*N*(K*K + 1)));
-		// округление до тысячных
-		double rounded = ceil(1000*newAx + 0.5) / 1000.0;
-		acc.Add(rounded);
+		acc.Add(floor(newAx + 0.5));
 	}
-	for (auto point : arc_2)
+	for (auto point : arc_2)	
 	{
 		x0 = (point.x - center.x + (point.y - center.y)*K) / sqrt(K*K + 1);
 		y0 = (-(point.x - center.x)*K + point.y - center.y) / sqrt(K*K + 1);
 		double newAx = std::sqrt((x0*x0*N*N + y0*y0) / (N*N*(K*K + 1)));
-		double rounded = ceil(1000*newAx + 0.5) / 1000.0;
-		acc.Add(rounded);
+		acc.Add(floor(newAx + 0.5));
 	}
 	for (auto point : arc_3)
 	{
 		x0 = (point.x - center.x + (point.y - center.y)*K) / sqrt(K*K + 1);
 		y0 = (-(point.x - center.x)*K + point.y - center.y) / sqrt(K*K + 1);
 		double newAx = std::sqrt((x0*x0*N*N + y0*y0) / (N*N*(K*K + 1)));
-		double rounded = ceil(1000*newAx + 0.5) / 1000.0;
-		acc.Add(rounded);
+		acc.Add(floor(newAx + 0.5));
 	}
 	double Ax = acc.FindMax();
 	double Ay = abs(Ax * K);
@@ -114,14 +115,13 @@ double findMajorAxis(const Arc& arc_1, const Arc& arc_2, const Arc& arc_3, const
 }
 
 // находят уравнение прямой, проходящей через середины параллельных хорд
-
+// возвращают (INT_MAX, INT_MAX) в случае какой-либо ошибки
 std::tuple<double, int> findLineCrossingMidpointBetweenHorizontalArcs(const Arc& arcI, const Arc& arcII)
 {
 	std::vector<Point> midPoints;
 	// a) построить прямую между нижним краем дуги I и серединой дуги II
 	Point lowestPoint = arcI[arcI.size()-1];
 	Point midPoint = arcII[arcII.size()/2];
-	//line(chords, lowestPoint, midPoint, Scalar(200, 200, 200));
 	Point dir_vector = lowestPoint - midPoint; // направляющий вектор исходной хорды
 	midPoints.emplace_back((lowestPoint.x + midPoint.x) / 2, (lowestPoint.y + midPoint.y) / 2);
 	// б) построить ещё несколько параллельных ей
@@ -130,8 +130,7 @@ std::tuple<double, int> findLineCrossingMidpointBetweenHorizontalArcs(const Arc&
 	// каждая последующая хорда будет пересекать дугу I выше и выше, поэтому запоминаем, откуда нам 
 	// следует искать следующую точку
 	int checkpoint =  arcI.size() - 2;
-	
-	for (int pointII = arcII.size()/2 - delta; pointII >= 0; pointII -= delta)
+	for (int pointII = arcII.size()/2 - delta; pointII >= 0 && checkpoint > 0; pointII -= delta)
 	{
 		// ищем точку на дуге I, которую пересекает хорда
 		// будем брать ту, которая после подстановки в уравнение прямой с данным коэфеициентом С и
@@ -140,7 +139,7 @@ std::tuple<double, int> findLineCrossingMidpointBetweenHorizontalArcs(const Arc&
 		int С = dir_vector.x * arcII[pointII].y - dir_vector.y * arcII[pointII].x; 
 		int prev_discrepancy = abs(dir_vector.y * arcI[checkpoint].x - dir_vector.x * arcI[checkpoint].y + С);
 		checkpoint--;
-		bool haventFoundChord = false;
+		bool foundNewChord = false;
 		for (int pointI = checkpoint; pointI > 0; pointI--)
 		{
 			int discrepancy = abs(dir_vector.y * arcI[pointI].x - dir_vector.x * arcI[pointI].y + С);
@@ -159,25 +158,26 @@ std::tuple<double, int> findLineCrossingMidpointBetweenHorizontalArcs(const Arc&
 				{
 					// мы нашли минимум, и он нас устраивает
 					checkpoint = pointI+2;
+				    foundNewChord = true;
 					break;
 				}
-				else
-				{
-					// нас не устраивает наилучший вариант из тех, что мы нашли
-					// переходим к поиску параллельной хорды от следующей точки дуги I
-					haventFoundChord = true;
-					break;
-				}
+				// нас не устраивает наилучший вариант из тех, что мы нашли
+				// переходим к поиску параллельной хорды от следующей точки дуги I
+				break;
 			}
 			prev_discrepancy = discrepancy;
 		}
-		if (haventFoundChord)
+		if (!foundNewChord)
 			continue;
-		// в) найди середины хорд
 		midPoints.emplace_back((arcII[pointII].x + arcI[checkpoint].x) / 2, 
 							   (arcII[pointII].y + arcI[checkpoint].y) / 2);
 	}
+	if (midPoints.size() <= 1)
+		return std::make_tuple(INT_MAX, INT_MAX);
+
 	double slope = getSlope(midPoints);
+	if (slope == INT_MAX)
+		return std::make_tuple(INT_MAX, INT_MAX);
 	Point pointOnLineCrossingCenter = getAveragePoint(midPoints);
 	// y = slope*x + coeff
 	int coeff = pointOnLineCrossingCenter.y - slope * pointOnLineCrossingCenter.x;
@@ -200,7 +200,7 @@ std::tuple<double, int> findLineCrossingMidpointBetweenUpperAndLowerArcs(const A
 	// следует искать следующую точку
 	int checkpoint = 0;
 	
-	for (int pointIV = arcIV.size()/2 - delta; pointIV >= delta; pointIV -= delta)
+	for (int pointIV = arcIV.size()/2 - delta; pointIV >= delta && checkpoint < arcI.size()-1; pointIV -= delta)
 	{
 		// ищем точку на дуге I, которую пересекает хорда
 		// будем брать ту, которая после подстановки в уравнение прямой с данным коэфеициентом С и
@@ -209,8 +209,8 @@ std::tuple<double, int> findLineCrossingMidpointBetweenUpperAndLowerArcs(const A
 		int С = dir_vector.x * arcIV[pointIV].y - dir_vector.y * arcIV[pointIV].x; 
 		int prev_discrepancy = abs(dir_vector.y * arcI[checkpoint].x - dir_vector.x * arcI[checkpoint].y + С);
 		checkpoint++;
-		bool haventFoundChord = false;
-		for (int pointI = checkpoint; pointI < arcI.size(); pointI++)
+		bool foundNewChord = false;
+		for (int pointI = checkpoint; pointI < arcI.size()-1; pointI++)
 		{
 			int discrepancy = abs(dir_vector.y * arcI[pointI].x - dir_vector.x * arcI[pointI].y + С);
 			if (discrepancy > prev_discrepancy)
@@ -228,25 +228,27 @@ std::tuple<double, int> findLineCrossingMidpointBetweenUpperAndLowerArcs(const A
 				{
 					// мы нашли минимум, и он нас устраивает
 					checkpoint = pointI-2;
+					foundNewChord = true;
 					break;
 				}
-				else
-				{
-					// нас не устраивает наилучший вариант из тех, что мы нашли
-					// переходим к поиску параллельной хорды от следующей точки дуги I
-					haventFoundChord = true;
-					break;
-				}
+				// нас не устраивает наилучший вариант из тех, что мы нашли
+				// переходим к поиску параллельной хорды от следующей точки дуги I
+				break;
 			}
 			prev_discrepancy = discrepancy;
 		}
-		if (haventFoundChord)
+		if (!foundNewChord)
 			continue;
 		// в) найди середины хорд
 		midPoints.emplace_back((arcIV[pointIV].x + arcI[checkpoint].x) / 2, 
 							   (arcIV[pointIV].y + arcI[checkpoint].y) / 2);
 	}
+	if (midPoints.size() <= 1)
+		return std::make_tuple(INT_MAX, INT_MAX);
+
 	double slope = getSlope(midPoints);
+	if (slope == INT_MAX)
+		return std::make_tuple(INT_MAX, INT_MAX);
 	Point pointOnLineCrossingCenter = getAveragePoint(midPoints);
 	// y = slope*x + coeff
 	int coeff = pointOnLineCrossingCenter.y - slope * pointOnLineCrossingCenter.x;
@@ -269,7 +271,7 @@ std::tuple<double, int> findLineCrossingMidpointBetweenLowerAndUpperArcs(const A
 	// следует искать следующую точку
 	int checkpoint = arcIV.size()-1;
 	
-	for (int pointI = arcI.size()/2 + delta; pointI < arcI.size() - delta; pointI += delta)
+	for (int pointI = arcI.size()/2 + delta; pointI < arcI.size() - delta && checkpoint > 0; pointI += delta)
 	{
 		// ищем точку на дуге IV, которую пересекает хорда
 		// будем брать ту, которая после подстановки в уравнение прямой с данным коэфеициентом С и
@@ -278,7 +280,7 @@ std::tuple<double, int> findLineCrossingMidpointBetweenLowerAndUpperArcs(const A
 		int С = dir_vector.x * arcI[pointI].y - dir_vector.y * arcI[pointI].x; 
 		int prev_discrepancy = abs(dir_vector.y * arcIV[checkpoint].x - dir_vector.x * arcIV[checkpoint].y + С);
 		checkpoint--;
-		bool haventFoundChord = false;
+		bool foundNewChord = false;
 		for (int pointIV = checkpoint; pointIV > 0; pointIV--)
 		{
 			int discrepancy = abs(dir_vector.y * arcIV[pointIV].x - dir_vector.x * arcIV[pointIV].y + С);
@@ -297,25 +299,27 @@ std::tuple<double, int> findLineCrossingMidpointBetweenLowerAndUpperArcs(const A
 				{
 					// мы нашли минимум, и он нас устраивает
 					checkpoint = pointIV+2;
+					foundNewChord = true;
 					break;
 				}
-				else
-				{
-					// нас не устраивает наилучший вариант из тех, что мы нашли
-					// переходим к поиску параллельной хорды от следующей точки дуги I
-					haventFoundChord = true;
-					break;
-				}
+     			// нас не устраивает наилучший вариант из тех, что мы нашли
+				// переходим к поиску параллельной хорды от следующей точки дуги I
+				break;
 			}
 			prev_discrepancy = discrepancy;
 		}
-		if (haventFoundChord)
+		if (!foundNewChord)
 			continue;
-		// в) найди середины хорд
+		// в) найти середины хорды
 		midPoints.emplace_back((arcI[pointI].x + arcIV[checkpoint].x) / 2, 
 							   (arcI[pointI].y + arcIV[checkpoint].y) / 2);
 	}
+	if (midPoints.size() <= 1)
+		return std::make_tuple(INT_MAX, INT_MAX);
+
 	double slope = getSlope(midPoints);
+	if (slope == INT_MAX)
+		return std::make_tuple(INT_MAX, INT_MAX);
 	Point pointOnLineCrossingCenter = getAveragePoint(midPoints);
 	// y = slope*x + coeff
 	int coeff = pointOnLineCrossingCenter.y - slope * pointOnLineCrossingCenter.x;
@@ -324,8 +328,12 @@ std::tuple<double, int> findLineCrossingMidpointBetweenLowerAndUpperArcs(const A
 
 cv::Point findIntersection(std::tuple<double /*slope*/, int /*coeff*/> line_1, std::tuple<double, int> line_2)
 {
-	int x = static_cast<int>((std::get<1>(line_1) - std::get<1>(line_2)) 
-		/ (std::get<0>(line_2) - std::get<0>(line_1)));
+	double diff = std::get<0>(line_2) - std::get<0>(line_1);
+	if (diff == 0)
+	{
+		return Point(INT_MAX, INT_MAX);
+	}
+	int x = static_cast<int>((std::get<1>(line_1) - std::get<1>(line_2)) / diff);
 	int y = x*std::get<0>(line_1) + std::get<1>(line_1);
 	return Point(x, y);
 }
@@ -334,8 +342,9 @@ std::tuple<double, double, double> getEllipseParams(double q1, double q2, double
 {
 	double alpha = q1*q2 - q3*q4;
 	double beta = (q3*q4 + 1)*(q1 + q2) - (q1*q2 + 1)*(q3 + q4);
-	double K_plus =	(-beta + std::sqrt(beta*beta + 4*alpha*alpha)) / (2*alpha);
-	double N_plus = std::sqrt(-(q1 - K_plus) * (q2 - K_plus) / ((1 + q1*K_plus)*(1 + q2*K_plus)));
+	double K_plus =	(-beta - std::sqrt(beta*beta + 4*alpha*alpha)) / (2*alpha);
+	double N_plus_squared = -(q1 - K_plus) * (q2 - K_plus) / ((1 + q1*K_plus)*(1 + q2*K_plus));
+	double N_plus = std::sqrt(N_plus_squared);
 	double N, K, ro;
 	
 	if (N_plus <= 1)
@@ -387,13 +396,66 @@ vector<Ellipse> FornaciariPratiDetector::DetectEllipses(const Mat& src)
 	testTriplets();
 
 	Mat ellipsesImg = Mat::zeros(m_edgesCopy.rows, m_edgesCopy.cols, CV_8UC3);
-	//src.copyTo(ellipsesImg);
 	for (auto e : m_ellipses)
 	{
-		std::cout << "ellipse\n";
 		Scalar color(55 + rand() % 200, 55 + rand() % 200, 55 + rand() % 200);
 		e.DrawOnImage(ellipsesImg, color);
 	}
+
+	/*const Arc& arcI = m_arcsInCoordinateQuarters[0][1];
+	const Arc& arcIII = m_arcsInCoordinateQuarters[2][0];
+	const Arc& arcIV = m_arcsInCoordinateQuarters[3][0];
+
+	Mat test = Mat::zeros(m_edgesCopy.rows, m_edgesCopy.cols, CV_8UC3);
+	drawArc(arcI, test, arcColor[0]);
+	drawArc(arcIII, test, arcColor[2]);
+	drawArc(arcIV, test, arcColor[3]);
+	
+		
+	std::tuple<double, int> line_34, line_43, line_14, line_41;
+	line_34 = findLineCrossingMidpointBetweenHorizontalArcs(arcIII, arcIV);
+	line_43 = findLineCrossingMidpointBetweenHorizontalArcs(arcIV, arcIII);
+	line_14 = findLineCrossingMidpointBetweenUpperAndLowerArcs(arcI, arcIV);
+	line_41 = findLineCrossingMidpointBetweenLowerAndUpperArcs(arcIV, arcI);
+	Point intersection_1 = findIntersection(line_34, line_43);
+	Point intersection_2 = findIntersection(line_14, line_41);
+
+	line(test, Point(0, std::get<1>(line_34)), Point(600, 600*std::get<0>(line_34) + std::get<1>(line_34)), Scalar(0, 0, 255));
+	line(test, Point(0, std::get<1>(line_43)), Point(600, 600*std::get<0>(line_43) + std::get<1>(line_43)), Scalar(255, 0, 0));
+	displayImage("Test", test);
+	std::cout << intersection_1 << " " << intersection_2 << "\n";
+
+	double q1, q2, q3, q4;
+	q1 = static_cast<double>((arcIV[arcIV.size()-1].y - arcIII[arcIII.size()/2].y)) / 
+		 (arcIV[arcIV.size()-1].x - arcIII[arcIII.size()/2].x);
+	q2 = std::get<0>(line_43);
+	q3 = static_cast<double>((arcIV[arcIV.size()/2].y - arcI[0].y)) / 
+		 (arcIV[arcIV.size()/2].x - arcI[0].x);
+	q4 = std::get<0>(line_14);
+	double N, K, ro;
+	std::tie(N, K, ro) = getEllipseParams(q1, q2, q3, q4);
+
+	Point center((intersection_1.x + intersection_2.x) / 2,
+				 (intersection_1.y  + intersection_2.y) / 2);
+	int A = findMajorAxis(arcI, arcIII, arcIV, center, N, K);
+	double B = A * N;
+	double roInDegrees = ro/M_PI * 180;
+	std::cout << "Center: " << center << std::endl;
+	std::cout << "roInDegrees " << roInDegrees << std::endl;
+	std::cout << "A " << A << " B " << B << std::endl;
+
+	Ellipse ellipse(center, Size(A, B), roInDegrees);
+	vector<Point> ellipsePoints = ellipse.FindEllipsePoints(m_edges.size());
+	int arcsLength = arcI.size() + arcIII.size() + arcIV.size();
+	double score = scoreForEllipse_2(ellipsePoints, arcI, arcIII, arcIV); //scoreForEllipse(ellipsePoints, arcsLength);
+	//std::cout << "score = " << score << "\n\n";
+	if (score > SCORE_THRESHOLD)
+	{
+		if (scoreForEllipse(ellipsePoints, arcsLength) > SECOND_THRESHOLD)
+			m_ellipses.push_back(ellipse);
+	}
+	*/
+
 	displayImage("Result", ellipsesImg);
 	waitKey(0);
 	vector<Ellipse> ellipses;
@@ -433,13 +495,13 @@ void FornaciariPratiDetector::getSobelDerivatives(const Mat& src)
 	GaussianBlur(src, m_blurred, Size(m_blurKernelSize, m_blurKernelSize), m_blurSigma, m_blurSigma);
 	Sobel(m_blurred, m_sobelX, CV_16S, 1, 0, m_sobelKernelSize);
 	Sobel(m_blurred, m_sobelY, CV_16S, 0, 1, m_sobelKernelSize);
-#ifdef _DEBUG 
+/*#ifdef _DEBUG 
 	Mat cv_8u_sobelX, cv_8u_sobelY;
 	convertScaleAbs(m_sobelX, cv_8u_sobelX);
 	convertScaleAbs(m_sobelY, cv_8u_sobelY);
 	displayImage("SobelX", cv_8u_sobelX);
 	displayImage("SobelY", cv_8u_sobelY);
-#endif
+#endif*/
 }
 
 void FornaciariPratiDetector::useCannyDetector()
@@ -448,9 +510,10 @@ void FornaciariPratiDetector::useCannyDetector()
 	double cannyHighLowtRatio = 2.5;
 	Canny(m_blurred, m_edges, cannyLowTreshold, cannyLowTreshold * cannyHighLowtRatio);
 	m_edges.copyTo(m_edgesCopy);
-#ifdef _DEBUG
 	displayImage("Canny", m_edges);
-#endif
+/*#ifdef _DEBUG
+	displayImage("Canny", m_edges);
+#endif*/
 }
 
 void FornaciariPratiDetector::heuristicSearchOfArcs()
@@ -529,14 +592,14 @@ void FornaciariPratiDetector::heuristicSearchOfArcs()
 			}
 		}
 	}
-#ifdef _DEBUG
+/*#ifdef _DEBUG
 	Mat result = Mat::zeros(m_edgesCopy.rows, m_edgesCopy.cols, CV_8UC3);
 	uchar arcColor[4][3] = {{0, 0, 255}, {0, 255, 0}, {255, 0, 0}, {0, 255, 255}};
 	for(int i = 0; i < 4; i++)
 		for (auto arc : m_arcsInCoordinateQuarters[i])
 			drawArc(arc, result, arcColor[i]);
 	displayImage("All arcs", result);
-#endif
+#endif*/
 }
 
 void FornaciariPratiDetector::findArcThatIncludesPoint(int x, int y, int dx, Arc& arc)
@@ -699,7 +762,7 @@ void FornaciariPratiDetector::choosePossibleTriplets(){
 		{
 			// если сегмент из третьей четверти у этих пар один и тот же, то это возможная тройка
 			if(m_possibleIIIandIV[i].first == m_possibleIIandIII[j].second)
-				m_tripletsWithout_I.emplace_back(m_possibleIIandIII[j].first, m_possibleIIIandIV[i].first, m_possibleIIIandIV[j].second);
+				m_tripletsWithout_I.emplace_back(m_possibleIIandIII[j].first, m_possibleIIIandIV[i].first, m_possibleIIIandIV[i].second);
 		}
 	}	
 	
@@ -712,7 +775,7 @@ void FornaciariPratiDetector::choosePossibleTriplets(){
 	std::cout << "With it: " << m_tripletsWithout_I.size() + m_tripletsWithout_II.size() + 
 				                m_tripletsWithout_III.size() + m_tripletsWithout_IV.size() 
 			  << std::endl;
-#ifdef _DEBUG
+//#ifdef _DEBUG
 	for (auto triplet : m_tripletsWithout_I)
 	{
 		m_remainingArcsIdx[1].insert(triplet[0]);
@@ -733,17 +796,25 @@ void FornaciariPratiDetector::choosePossibleTriplets(){
 	}
 	for (auto triplet : m_tripletsWithout_IV)
 	{
+		
 		m_remainingArcsIdx[0].insert(triplet[0]);
 		m_remainingArcsIdx[1].insert(triplet[1]);
 		m_remainingArcsIdx[2].insert(triplet[2]);
 	}
 
+	// I - 0, III - 0, IV - 0
+	/*for (int i : m_remainingArcsIdx[3])
+	{
+		Mat result = Mat::zeros(m_edgesCopy.rows, m_edgesCopy.cols, CV_8UC3);
+		drawArc(m_arcsInCoordinateQuarters[3][i], result, arcColor[3]);
+		displayImage(std::to_string(i).c_str(), result);
+	}*/
 	Mat result = Mat::zeros(m_edgesCopy.rows, m_edgesCopy.cols, CV_8UC3);
 	for (int q = 0; q < 4; q++)
 		for (int i : m_remainingArcsIdx[q])
 			drawArc(m_arcsInCoordinateQuarters[q][i], result, arcColor[q]);
 	displayImage("All possible triplets", result);
-#endif
+//#endif
 }
 
 inline bool FornaciariPratiDetector::isEdgePoint(Mat& edges, const Point& point)
@@ -759,6 +830,7 @@ inline bool FornaciariPratiDetector::isEdgePoint(Mat& edges, const Point& point)
 
 void FornaciariPratiDetector::testTriplets()
 {
+	int name = 0;
 	for(auto triplet : m_tripletsWithout_IV)
 	{
 		const Arc& arcI = m_arcsInCoordinateQuarters[0][triplet[0]];
@@ -767,11 +839,20 @@ void FornaciariPratiDetector::testTriplets()
 
 		// ищем прямые, проходящие через середины параллельных хорд
 		// они пересекаются в центре эллипса
-		auto line_12 = findLineCrossingMidpointBetweenHorizontalArcs(arcI, arcII);
-		auto line_21 = findLineCrossingMidpointBetweenHorizontalArcs(arcII, arcI);
+		std::tuple<double, int> line_12, line_21, line_23, line_32;
+		line_12 = findLineCrossingMidpointBetweenHorizontalArcs(arcI, arcII);
+		if (std::get<0>(line_12) == INT_MAX && std::get<1>(line_12) == INT_MAX)
+			continue;
+		line_21 = findLineCrossingMidpointBetweenHorizontalArcs(arcII, arcI);
+		if (std::get<0>(line_21) == INT_MAX && std::get<1>(line_21) == INT_MAX)
+			continue;
+		line_23 = findLineCrossingMidpointBetweenUpperAndLowerArcs(arcII, arcIII);
+		if (std::get<0>(line_23) == INT_MAX && std::get<1>(line_23) == INT_MAX)
+			continue;
+		line_32 = findLineCrossingMidpointBetweenLowerAndUpperArcs(arcIII, arcII);
+		if (std::get<0>(line_32) == INT_MAX && std::get<1>(line_32) == INT_MAX)
+			continue;
 		Point intersection_1 = findIntersection(line_12, line_21);
-		auto line_23 = findLineCrossingMidpointBetweenUpperAndLowerArcs(arcII, arcIII);
-		auto line_32 = findLineCrossingMidpointBetweenLowerAndUpperArcs(arcIII, arcII);
 		Point intersection_2 = findIntersection(line_23, line_32);
 
 		double q1, q2, q3, q4;
@@ -783,25 +864,32 @@ void FornaciariPratiDetector::testTriplets()
 		q4 = std::get<0>(line_32);
 		double N, K, ro;
 		std::tie(N, K, ro) = getEllipseParams(q1, q2, q3, q4);
-		 
+
 		Point center((intersection_1.x + intersection_2.x) / 2,
 					 (intersection_1.y  + intersection_2.y) / 2);
 		int A = findMajorAxis(arcI, arcII, arcIII, center, N, K);
 		double B = A * N;
 		double roInDegrees = ro/M_PI * 180;
-		std::cout << "Center: " << center << std::endl;
+		/*std::cout << "Center: " << center << std::endl;Fsc
 		std::cout << "roInDegrees " << roInDegrees << std::endl;
-		std::cout << "A " << A << " B " << B << std::endl;
+		std::cout << "A " << A << " B " << B << std::endl;*/
 
 		// находим точки, принадлежащие предполагаемому эллипсу, и проверяем
 		// его на правдоподобность
 		Ellipse ellipse(center, Size(A, B), roInDegrees);
 		vector<Point> ellipsePoints = ellipse.FindEllipsePoints(m_edges.size());
-		int arcsLength = arcI.size() + arcII.size() + arcIII.size();
-		double score = scoreForEllipse(ellipsePoints, arcsLength);
-		std::cout << "score = " << score << "\n\n";
-		if (score > SCORE_THRESHOLD)
+		if (getScore(ellipsePoints, arcI, arcII, arcIII))
+		{
 			m_ellipses.push_back(ellipse);
+		}
+		
+		/*Mat result = Mat::zeros(m_edgesCopy.rows, m_edgesCopy.cols, CV_8UC3);
+		drawArc(arcI, result, arcColor[0]);
+		drawArc(arcII, result, arcColor[1]);
+		drawArc(arcIII, result, arcColor[2]);
+		ellipse.DrawOnImage(result, Scalar(255, 255, 255));
+		displayImage(std::to_string(name).c_str(), result);
+		name++;*/
 	}
 
 	for(auto triplet : m_tripletsWithout_III)
@@ -810,11 +898,20 @@ void FornaciariPratiDetector::testTriplets()
 		const Arc& arcII = m_arcsInCoordinateQuarters[1][triplet[1]];
 		const Arc& arcIV = m_arcsInCoordinateQuarters[3][triplet[2]];
 
-		auto line_12 = findLineCrossingMidpointBetweenHorizontalArcs(arcI, arcII);
-		auto line_21 = findLineCrossingMidpointBetweenHorizontalArcs(arcII, arcI);
+		std::tuple<double, int> line_12, line_21, line_14, line_41;
+		line_12 = findLineCrossingMidpointBetweenHorizontalArcs(arcI, arcII);
+		if (std::get<0>(line_12) == INT_MAX && std::get<1>(line_12) == INT_MAX)
+			continue;
+		line_21 = findLineCrossingMidpointBetweenHorizontalArcs(arcII, arcI);
+		if (std::get<0>(line_21) == INT_MAX && std::get<1>(line_21) == INT_MAX)
+			continue;
+		line_14 = findLineCrossingMidpointBetweenUpperAndLowerArcs(arcI, arcIV);
+		if (std::get<0>(line_14) == INT_MAX && std::get<1>(line_14) == INT_MAX)
+			continue;
+		line_41 = findLineCrossingMidpointBetweenLowerAndUpperArcs(arcIV, arcI);
+		if (std::get<0>(line_41) == INT_MAX && std::get<1>(line_41) == INT_MAX)
+			continue;
 		Point intersection_1 = findIntersection(line_12, line_21);
-		auto line_14 = findLineCrossingMidpointBetweenUpperAndLowerArcs(arcI, arcIV);
-		auto line_41 = findLineCrossingMidpointBetweenLowerAndUpperArcs(arcIV, arcI);
 		Point intersection_2 = findIntersection(line_14, line_41);
 
 		double q1, q2, q3, q4;
@@ -825,24 +922,30 @@ void FornaciariPratiDetector::testTriplets()
 			 (arcIV[arcIV.size()-1].x - arcI[arcI.size()/2].x);
 		q4 = std::get<0>(line_41);
 		double N, K, ro;
-		std::tie(N, K, ro) = getEllipseParams(q1, q2, q3, q4);
+    	std::tie(N, K, ro) = getEllipseParams(q1, q2, q3, q4);
 		
 		Point center((intersection_1.x + intersection_2.x) / 2,
 					 (intersection_1.y  + intersection_2.y) / 2);
 		int A = findMajorAxis(arcI, arcII, arcIV, center, N, K);
 		double B = A * N;
 		double roInDegrees = ro/M_PI * 180;
-		std::cout << "Center: " << center << std::endl;
+		/*std::cout << "Center: " << center << std::endl;
 		std::cout << "roInDegrees " << roInDegrees << std::endl;
-		std::cout << "A " << A << " B " << B << std::endl;
+		std::cout << "A " << A << " B " << B << std::endl;*/
 
 		Ellipse ellipse(center, Size(A, B), roInDegrees);
 		vector<Point> ellipsePoints = ellipse.FindEllipsePoints(m_edges.size());
-		int arcsLength = arcI.size() + arcII.size() + arcIV.size();
-		double score = scoreForEllipse(ellipsePoints, arcsLength);
-		std::cout << "score = " << score << "\n\n";
-		if (score > SCORE_THRESHOLD)
+		if (getScore(ellipsePoints, arcI, arcII, arcIV))
+		{
 			m_ellipses.push_back(ellipse);
+		}
+		/*Mat result = Mat::zeros(m_edgesCopy.rows, m_edgesCopy.cols, CV_8UC3);
+		drawArc(arcI, result, arcColor[0]);
+		drawArc(arcII, result, arcColor[1]);
+		drawArc(arcIV, result, arcColor[3]);
+		ellipse.DrawOnImage(result, Scalar(255, 255, 255));
+		displayImage(std::to_string(name).c_str(), result);
+		name++;*/
 	}
 
 	for(auto triplet : m_tripletsWithout_II)
@@ -851,14 +954,21 @@ void FornaciariPratiDetector::testTriplets()
 		const Arc& arcIII = m_arcsInCoordinateQuarters[2][triplet[1]];
 		const Arc& arcIV = m_arcsInCoordinateQuarters[3][triplet[2]];
 		
-		// ищем прямые, проходящие через середины параллельных хорд
-		// они пересекаются в центре эллипса
-		auto line_34 = findLineCrossingMidpointBetweenHorizontalArcs(arcIII, arcIV);
-		auto line_43 = findLineCrossingMidpointBetweenHorizontalArcs(arcIV, arcIII);
+		std::tuple<double, int> line_34, line_43, line_14, line_41;
+		line_34 = findLineCrossingMidpointBetweenHorizontalArcs(arcIII, arcIV);
+		if (std::get<0>(line_34) == INT_MAX && std::get<1>(line_34) == INT_MAX)
+			continue;
+		line_43 = findLineCrossingMidpointBetweenHorizontalArcs(arcIV, arcIII);
+		if (std::get<0>(line_43) == INT_MAX && std::get<1>(line_43) == INT_MAX)
+			continue;
+	    line_14 = findLineCrossingMidpointBetweenUpperAndLowerArcs(arcI, arcIV);
+		if (std::get<0>(line_14) == INT_MAX && std::get<1>(line_14) == INT_MAX)
+			continue;
+	    line_41 = findLineCrossingMidpointBetweenLowerAndUpperArcs(arcIV, arcI);
+		if (std::get<0>(line_41) == INT_MAX && std::get<1>(line_41) == INT_MAX)
+			continue;
 		Point intersection_1 = findIntersection(line_34, line_43);
-		auto line_14 = findLineCrossingMidpointBetweenUpperAndLowerArcs(arcI, arcIV);
-		auto line_41 = findLineCrossingMidpointBetweenLowerAndUpperArcs(arcIV, arcI);
-		Point intersection_2 = findIntersection(line_14, line_41);
+	    Point intersection_2 = findIntersection(line_14, line_41);
 
 		double q1, q2, q3, q4;
 		q1 = static_cast<double>((arcIV[arcIV.size()-1].y - arcIII[arcIII.size()/2].y)) / 
@@ -869,23 +979,30 @@ void FornaciariPratiDetector::testTriplets()
 		q4 = std::get<0>(line_14);
 		double N, K, ro;
 		std::tie(N, K, ro) = getEllipseParams(q1, q2, q3, q4);
-		
+
 		Point center((intersection_1.x + intersection_2.x) / 2,
 					 (intersection_1.y  + intersection_2.y) / 2);
 		int A = findMajorAxis(arcI, arcIII, arcIV, center, N, K);
 		double B = A * N;
 		double roInDegrees = ro/M_PI * 180;
-		std::cout << "Center: " << center << std::endl;
+		/*std::cout << "Center: " << center << std::endl;
 		std::cout << "roInDegrees " << roInDegrees << std::endl;
-		std::cout << "A " << A << " B " << B << std::endl;
+		std::cout << "A " << A << " B " << B << std::endl;*/
 
 		Ellipse ellipse(center, Size(A, B), roInDegrees);
 		vector<Point> ellipsePoints = ellipse.FindEllipsePoints(m_edges.size());
-		int arcsLength = arcI.size() + arcIII.size() + arcIV.size();
-		double score = scoreForEllipse(ellipsePoints, arcsLength);
-		std::cout << "score = " << score << "\n\n";
-		if (score > SCORE_THRESHOLD)
+		if (getScore(ellipsePoints, arcI, arcIII, arcIV))
+		{
 			m_ellipses.push_back(ellipse);
+		}
+
+		/*Mat result = Mat::zeros(m_edgesCopy.rows, m_edgesCopy.cols, CV_8UC3);
+		drawArc(arcI, result, arcColor[0]);
+		drawArc(arcIII, result, arcColor[2]);
+		drawArc(arcIV, result, arcColor[3]);
+		ellipse.DrawOnImage(result, Scalar(255, 255, 255));
+		displayImage(std::to_string(name).c_str(), result);
+		name++;*/
 	}
 
 	for(auto triplet : m_tripletsWithout_I)
@@ -894,14 +1011,20 @@ void FornaciariPratiDetector::testTriplets()
 		const Arc& arcIII = m_arcsInCoordinateQuarters[2][triplet[1]];
 		const Arc& arcIV = m_arcsInCoordinateQuarters[3][triplet[2]];
 		
-		// ищем прямые, проходящие через середины параллельных хорд
-		// они пересекаются в центре эллипса
-		auto line_34 = findLineCrossingMidpointBetweenHorizontalArcs(arcIII, arcIV);
-		auto line_43 = findLineCrossingMidpointBetweenHorizontalArcs(arcIV, arcIII);
+		std::tuple<double, int> line_34, line_43, line_23, line_32;
+		line_34 = findLineCrossingMidpointBetweenHorizontalArcs(arcIII, arcIV);
+		if (std::get<0>(line_34) == INT_MAX && std::get<1>(line_34) == INT_MAX)
+			continue;
+		line_43 = findLineCrossingMidpointBetweenHorizontalArcs(arcIV, arcIII);
+		if (std::get<0>(line_43) == INT_MAX && std::get<1>(line_43) == INT_MAX)
+			continue;
+		line_23 = findLineCrossingMidpointBetweenUpperAndLowerArcs(arcII, arcIII);
+		if (std::get<0>(line_23) == INT_MAX && std::get<1>(line_23) == INT_MAX)
+			continue;
+		line_32 = findLineCrossingMidpointBetweenLowerAndUpperArcs(arcIII, arcII);
+		if (std::get<0>(line_32) == INT_MAX && std::get<1>(line_32) == INT_MAX)
+			continue;
 		Point intersection_1 = findIntersection(line_34, line_43);
-		std::cout << intersection_1 << std::endl;
-		auto line_23 = findLineCrossingMidpointBetweenUpperAndLowerArcs(arcII, arcIII);
-		auto line_32 = findLineCrossingMidpointBetweenLowerAndUpperArcs(arcIII, arcII);
 		Point intersection_2 = findIntersection(line_23, line_32);
 
 		double q1, q2, q3, q4;
@@ -913,29 +1036,36 @@ void FornaciariPratiDetector::testTriplets()
 		q4 = std::get<0>(line_32);
 		double N, K, ro;
 		std::tie(N, K, ro) = getEllipseParams(q1, q2, q3, q4);
-		
+
 		Point center((intersection_1.x + intersection_2.x) / 2,
 					 (intersection_1.y  + intersection_2.y) / 2);
 		int A = findMajorAxis(arcII, arcIII, arcIV, center, N, K);
 		double B = A * N;
 		double roInDegrees = ro/M_PI * 180;
-		std::cout << "Center: " << center << std::endl;
+		/*std::cout << "Center: " << center << std::endl;
 		std::cout << "roInDegrees " << roInDegrees << std::endl;
-		std::cout << "A " << A << " B " << B << std::endl;
+		std::cout << "A " << A << " B " << B << std::endl;*/
 
 		Ellipse ellipse(center, Size(A, B), roInDegrees);
 		vector<Point> ellipsePoints = ellipse.FindEllipsePoints(m_edges.size());
-		int arcsLength = arcII.size() + arcIII.size() + arcIV.size();
-		double score = scoreForEllipse(ellipsePoints, arcsLength);
-		std::cout << "score = " << score << "\n\n";
-		if (score > SCORE_THRESHOLD)
+		if (getScore(ellipsePoints, arcII, arcIII, arcIV))
+		{
 			m_ellipses.push_back(ellipse);
+		}
+
+		/*Mat result = Mat::zeros(m_edgesCopy.rows, m_edgesCopy.cols, CV_8UC3);
+		drawArc(arcII, result, arcColor[1]);
+		drawArc(arcIII, result, arcColor[2]);
+		drawArc(arcIV, result, arcColor[3]);
+		ellipse.DrawOnImage(result, Scalar(255, 255, 255));
+		displayImage(std::to_string(name).c_str(), result);
+		name++;*/
 	}
 }
 
 // отношение числа точек предполагаемого эллипса, попавших на какую-то границу,
 // к суммарной длине трёх дуг, по которым он построен
-double FornaciariPratiDetector::scoreForEllipse(const vector<Point>& ellipsePoints, int arcsLength) const
+double FornaciariPratiDetector::scoreForEllipse(const vector<Point>& ellipsePoints) const
 {
 	double accum = 0;
 	for (auto ellipsePoint : ellipsePoints)
@@ -946,7 +1076,7 @@ double FornaciariPratiDetector::scoreForEllipse(const vector<Point>& ellipsePoin
 		else if (volume == 127)
 			accum+=0.5;
 	}
-	return accum / arcsLength;
+	return accum / ellipsePoints.size();
 }
 
 void FornaciariPratiDetector::blurEdges()
@@ -986,5 +1116,58 @@ void FornaciariPratiDetector::blurEdges()
 }
 
 // отношение числа точек трёх дуг, по которым построен эллипс, попавших на этот эллипс, 
-// к общему числу этих точек
-//double FornaciariPratiDetector::scoreForEllipse_2(const vector<Point>& ellipsePoints, int arcsLength) const
+// к общему числу точек этих дуг
+double FornaciariPratiDetector::scoreForEllipse_2(const vector<Point>& ellipsePoints, const Arc& arc1,
+												  const Arc& arc2, const Arc& arc3) const
+{
+	double accum = 0;
+	for (auto elPoint : ellipsePoints)
+	{
+		for (auto p1 : arc1)
+		{
+			if ((p1.x - elPoint.x)*(p1.x - elPoint.x) + (p1.y - elPoint.y)*(p1.y - elPoint.y) <= 0)
+			{
+				accum++;
+				break;
+			}
+		}
+		for (auto p2 : arc2)
+		{
+			if ((p2.x - elPoint.x)*(p2.x - elPoint.x) + (p2.y - elPoint.y)*(p2.y - elPoint.y) <= 0)
+			{
+				accum++;
+				break;
+			}
+		}
+		for (auto p3 : arc3)
+		{
+			if ((p3.x - elPoint.x)*(p3.x - elPoint.x) + (p3.y - elPoint.y)*(p3.y - elPoint.y) <= 0)
+			{
+				accum++;
+				break;
+			}
+		}
+	}
+	double length = arc1.size() + arc2.size() + arc3.size();
+	return accum / length;
+}
+
+bool FornaciariPratiDetector::getScore(const vector<Point>& ellipsePoints, const Arc& arc1,
+									   const Arc& arc2, const Arc& arc3)
+{
+	double arcLength = arc1.size() + arc2.size() + arc3.size();
+	double score_1 = scoreForEllipse(ellipsePoints);
+	double score_2 = scoreForEllipse_2(ellipsePoints, arc1, arc2, arc3);
+	// в идеале 0.75, если мы построили идеальный круг по трём его дугам
+	double weight_2 = arcLength / static_cast<double>(ellipsePoints.size());
+	double BORDER = 0.25;
+	if (weight_2 < 0.48)
+		BORDER = 0.36;
+	if (score_2 > BORDER && score_1 > 0.40 || score_1 > 0.7)
+	{
+		std::cout << ellipsePoints.size() << " " << weight_2 << " " << score_2 << " " << score_1 << "\n";
+		return true;
+	}
+	return false;
+	
+}

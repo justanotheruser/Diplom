@@ -38,7 +38,7 @@ public:
 
 	FornaciariPratiDetector(double scoreThreshold, double similarityWithLineThreshold, 
 		double minimumAboveUnderAreaDifferenceRatio,
-		int blurKernelSize = 3, int blurSigma = 1, int sobelKernelSize = 3);
+		int blurKernelSize = 5, int blurSigma = 1, int sobelKernelSize = 3);
 	FornaciariPratiDetector(string configFile);
 	// EllipseDetector functions
 	virtual vector<Ellipse> DetectEllipses(const Mat& src);
@@ -52,9 +52,14 @@ private:
 	// dx shows whether this arc goes down to the right (I or III quarters) or left (II or IV quarters)
 	void findArcThatIncludesPoint(int i_x, int i_y, int i_dx, Arc& o_arc);
 	int calculateSquareUnderArc(const Arc& arc) const;
-	double FornaciariPratiDetector::scoreForEllipse(const vector<Point>& ellipsePoints, int arcsLength) const;
+	double scoreForEllipse(const vector<Point>& ellipsePoints) const;
+	double scoreForEllipse_2(const vector<Point>& ellipsePoints, const Arc& arc1,
+							 const Arc& arc2, const Arc& arc3) const;
+	bool curvatureCondition(const Arc& firstArc, const Arc& secondArc);
 	void testTriplets();
 	void blurEdges();
+	bool getScore(const vector<Point>& ellipsePoints, const Arc& arc1,
+					  const Arc& arc2, const Arc& arc3);
 private:
 	int m_sobelKernelSize;
 	Mat m_sobelX, m_sobelY; // should use CS_16S
